@@ -394,7 +394,39 @@
       </table>
       <button class="btn small no-print" style="margin-top:8px" onclick="addItemRow()">+ Add line item</button>
 
+      <div class="field no-print" style="margin-top:14px;">
+        <label>Discount</label>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="btn small secondary" onclick="applyQuickDiscount(0)">None</button>
+          <button type="button" class="btn small secondary" onclick="applyQuickDiscount(5)">5%</button>
+          <button type="button" class="btn small secondary" onclick="applyQuickDiscount(10)">10%</button>
+          <button type="button" class="btn small secondary" onclick="applyQuickDiscount(15)">15%</button>
+          <button type="button" class="btn small secondary" onclick="toggleDiscountFields()">Custom…</button>
+        </div>
+        <div id="discountFields" style="display:none; margin-top:8px;">
+          <div class="grid cols-3">
+            <div class="field">
+              <label>Type</label>
+              <select id="q_discountType" onchange="recalc()">
+                <option value="percent">% off</option>
+                <option value="fixed">£ off</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Value</label>
+              <input type="number" id="q_discountValue" min="0" step="0.01" oninput="recalc()">
+            </div>
+            <div class="field">
+              <label>Reason (shown on quote)</label>
+              <input type="text" id="q_discountReason" placeholder="e.g. Loyalty discount" oninput="recalc()">
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="totals">
+        <div id="subtotalRow" style="display:none;">Subtotal: <span id="subtotalAmt">£0.00</span></div>
+        <div id="discountDisplayRow" style="display:none; color:var(--danger);">Discount<span id="discountReasonDisplay"></span>: −<span id="discountAmtDisplay">£0.00</span></div>
         <div class="field" style="max-width:200px;">
           <label>Deposit %</label>
           <input type="number" id="q_depositPct" min="0" max="100" step="1" oninput="recalc()">
@@ -547,6 +579,7 @@ function blankQuote(){
     comments: settings.comments,
     photos: [],
     items: [ {desc:'', qty:1, price:0} ],
+    discount: { type:'percent', value:0, reason:'' },
     depositPct: settings.depositPct,
     terms: settings.terms,
     internal:{
@@ -560,6 +593,20 @@ function blankQuote(){
 }
 
 function fmt(n){ return '£' + (Number(n)||0).toFixed(2); }
+
+function computeTotals(q){
+  const subtotal = q.items.reduce((a,it)=>a + (Number(it.qty)||0)*(Number(it.price)||0), 0);
+  let discountAmt = 0;
+  if(q.discount && q.discount.value > 0){
+    discountAmt = q.discount.type === 'percent'
+      ? subtotal * (q.discount.value/100)
+      : q.discount.value;
+    discountAmt = Math.min(discountAmt, subtotal);
+  }
+  const total = subtotal - discountAmt;
+  const deposit = total * (q.depositPct/100);
+  return { subtotal, discountAmt, total, deposit };
+}
 
 // ---------- Rendering ----------
 function renderQuoteToForm(){
@@ -583,6 +630,11 @@ function renderQuoteToForm(){
   document.getElementById('q_comments').value = quote.comments;
   document.getElementById('q_terms').value = quote.terms;
   document.getElementById('q_depositPct').value = quote.depositPct;
+
+  document.getElementById('q_discountType').value = quote.discount.type;
+  document.getElementById('q_discountValue').value = quote.discount.value;
+  document.getElementById('q_discountReason').value = quote.discount.reason;
+  document.getElementById('discountFields').style.display = quote.discount.value > 0 ? 'block' : 'none';
 
   renderPhotos();
   renderItems();
@@ -674,6 +726,20 @@ function addPhotos(files){
 }
 function removePhoto(idx){ quote.photos.splice(idx,1); renderPhotos(); }
 
+function toggleDiscountFields(){
+  const el = document.getElementById('discountFields');
+  el.style.display = (el.style.display !== 'none') ? 'none' : 'block';
+}
+
+function applyQuickDiscount(pct){
+  quote.discount.type = 'percent';
+  quote.discount.value = pct;
+  document.getElementById('q_discountType').value = 'percent';
+  document.getElementById('q_discountValue').value = pct;
+  document.getElementById('discountFields').style.display = pct > 0 ? 'block' : 'none';
+  recalc();
+}
+
 function sumMaterialsIntoCalc(){
   const sum = quote.internal.materialsList.reduce((a,m)=>a+(Number(m.cost)||0),0);
   document.getElementById('i_materials').value = sum.toFixed(2);
@@ -696,13 +762,21 @@ function recalc(){
   quote.comments = document.getElementById('q_comments').value;
   quote.terms = document.getElementById('q_terms').value;
   quote.depositPct = parseFloat(document.getElementById('q_depositPct').value)||0;
+  quote.discount.type = document.getElementById('q_discountType').value;
+  quote.discount.value = parseFloat(document.getElementById('q_discountValue').value)||0;
+  quote.discount.reason = document.getElementById('q_discountReason').value;
   quote.internal.feePct = parseFloat(document.getElementById('i_feePct').value)||0;
   quote.internal.labour = parseFloat(document.getElementById('i_labour').value)||0;
   quote.internal.materials = parseFloat(document.getElementById('i_materials').value)||0;
   quote.internal.notes = document.getElementById('i_notes').value;
 
-  const total = quote.items.reduce((a,it)=>a + (Number(it.qty)||0)*(Number(it.price)||0), 0);
-  const deposit = total * (quote.depositPct/100);
+  const { subtotal, discountAmt, total, deposit } = computeTotals(quote);
+
+  document.getElementById('subtotalRow').style.display = discountAmt > 0 ? 'block' : 'none';
+  document.getElementById('subtotalAmt').textContent = fmt(subtotal);
+  document.getElementById('discountDisplayRow').style.display = discountAmt > 0 ? 'block' : 'none';
+  document.getElementById('discountReasonDisplay').textContent = quote.discount.reason ? ` (${quote.discount.reason})` : '';
+  document.getElementById('discountAmtDisplay').textContent = fmt(discountAmt);
   document.getElementById('grandTotal').textContent = fmt(total);
   document.getElementById('depositAmt').textContent = fmt(deposit);
 
@@ -773,6 +847,7 @@ document.getElementById('loadSelect').addEventListener('change', function(){
   if(all[this.value]){
     quote = all[this.value];
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
+    if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
     renderQuoteToForm();
   }
 });
@@ -842,8 +917,7 @@ function saveSettings(){
 // ---------- Email (quick send) ----------
 function emailQuote(){
   recalc();
-  const total = quote.items.reduce((a,it)=>a + (Number(it.qty)||0)*(Number(it.price)||0), 0);
-  const deposit = total * (quote.depositPct/100);
+  const { subtotal, discountAmt, total, deposit } = computeTotals(quote);
   const lines = [
     `Quote ${quote.ref} — ${settings.companyName}`,
     `Date: ${quote.date}   Valid until: ${quote.validUntil}`,
@@ -855,6 +929,10 @@ function emailQuote(){
     '',
     ...quote.items.map(it=>`- ${it.desc}  x${it.qty}  ${fmt(it.price)}  = ${fmt((it.qty||0)*(it.price||0))}`),
     '',
+    ...(discountAmt > 0 ? [
+      `Subtotal: ${fmt(subtotal)}`,
+      `Discount${quote.discount.reason ? ' ('+quote.discount.reason+')' : ''}: -${fmt(discountAmt)}`
+    ] : []),
     `Deposit required (${quote.depositPct}%): ${fmt(deposit)}`,
     `TOTAL: ${fmt(total)}`,
     '',
@@ -873,6 +951,7 @@ function emailQuote(){
   if(current){
     quote = JSON.parse(current);
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
+    if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
   } else {
     quote = blankQuote();
   }

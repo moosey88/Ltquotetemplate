@@ -14,13 +14,32 @@ GitHub Pages: Settings → Pages → deploy from the `main` branch / root).
 ### Customer Quote tab
 - Date, reference #, valid-until, prepared-by, and customer details
 - Project comments (prefilled from your default terms/description in Settings)
-- Site/reference photos with captions — attach what you saw on the visit
 - Line items table (description, qty, unit price) with an auto-calculated total
 - Discount — quick 5/10/15% buttons, or a custom % or £ amount with a reason,
   applied to the subtotal before deposit/total
 - Deposit % and total, calculated live
 - Terms & conditions text
 - Footer with your contact and bank details (from Settings)
+
+No site photos here — they're deliberately left off the customer-facing
+quote and PDF, and live on the Treasure Brief tab instead.
+
+### 🧰 Treasure Brief tab
+For whoever's actually doing the job — a separate document from the
+customer quote, with no pricing on it:
+- Job details (customer name, address, mobile, job description) — read live
+  from the Customer Quote tab, nothing to re-type
+- Site/reference photos with captions
+- An estimate intake form for the Treasure to fill in: hours or days needed,
+  a rate, and a materials-needed list (item / qty / notes)
+- **Download Treasure Brief PDF** — job info + photos + estimate fields
+  (blank ruled lines if not filled in, so it works as a paper hand-off too)
+- **Send My Estimate to Office** — same one-tap share/PDF flow as the
+  customer send, but addressed to your own business email instead, carrying
+  the Treasure's time and materials estimate back to you
+- **Apply Estimate to Internal Margins** — one click turns hours×rate into
+  the Internal tab's labour cost and copies the materials list across, so
+  you can see the margin the moment a number comes back
 
 ### Internal Margins & Notes tab
 Never printed and not included when you email the quote. Use it to work out
@@ -38,7 +57,9 @@ whether the price actually makes sense:
 
 Click **Settings** to set your company name, logo, contact details, bank
 details, and the defaults that get pre-filled on every new quote (deposit %,
-fee %, quote validity in days, default terms, default project comments).
+fee %, quote validity in days, default terms, default project comments). The
+Local Treasures logo is pulled in as the default (`assets/logo.png`) — swap
+it for your own via the logo upload in Settings if needed.
 
 ## Saving & sending
 

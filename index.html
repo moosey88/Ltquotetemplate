@@ -305,8 +305,9 @@
   <button class="no-print" onclick="saveQuote()">Save</button>
   <button class="no-print" onclick="deleteCurrentQuote()">Delete</button>
   <button class="no-print" onclick="openSettings()">Settings</button>
-  <button class="no-print" onclick="window.print()">Print / PDF</button>
-  <button class="no-print" onclick="emailQuote()">Email</button>
+  <button class="no-print" onclick="window.print()">Print</button>
+  <button class="no-print" onclick="downloadQuotePdf()">Download PDF</button>
+  <button class="no-print" onclick="sendToCustomer()">Send to Customer</button>
 </header>
 
 <main>
@@ -527,6 +528,7 @@
   </div>
 </div>
 
+<script src="vendor/jspdf.umd.min.js"></script>
 <script>
 const LS_QUOTES = 'quoteapp_quotes_v1';
 const LS_SETTINGS = 'quoteapp_settings_v1';
@@ -914,11 +916,10 @@ function saveSettings(){
   if(settings.logo){ logoImg.src = settings.logo; logoImg.style.display='inline-block'; }
 }
 
-// ---------- Email (quick send) ----------
-function emailQuote(){
-  recalc();
+// ---------- PDF generation ----------
+function quoteSummaryLines(){
   const { subtotal, discountAmt, total, deposit } = computeTotals(quote);
-  const lines = [
+  return [
     `Quote ${quote.ref} — ${settings.companyName}`,
     `Date: ${quote.date}   Valid until: ${quote.validUntil}`,
     '',
@@ -937,10 +938,210 @@ function emailQuote(){
     `TOTAL: ${fmt(total)}`,
     '',
     quote.terms
-  ].join('\n');
+  ];
+}
+
+function buildQuotePdf(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const marginX = 15, pageBottom = 282;
+  let y = 18;
+
+  function pageBreak(needed){
+    if(y + needed > pageBottom){ doc.addPage(); y = 18; }
+  }
+
+  // Header
+  doc.setFont(undefined,'bold'); doc.setFontSize(18); doc.setTextColor(20,60,40);
+  doc.text(settings.companyName || 'Your Company', marginX, y);
+  y += 7;
+  doc.setFont(undefined,'normal'); doc.setFontSize(11); doc.setTextColor(90);
+  doc.text('Estimate / Quote', marginX, y);
+  doc.setTextColor(0);
+  y += 8;
+
+  // Meta
+  doc.setFontSize(9); doc.setTextColor(90);
+  doc.text(`Date: ${quote.date || ''}`, marginX, y);
+  doc.text(`Reference: ${quote.ref || ''}`, marginX+65, y);
+  doc.text(`Valid until: ${quote.validUntil || ''}`, marginX+130, y);
+  y += 5;
+  const preparedLine = [quote.preparedBy, quote.phone, quote.email].filter(Boolean).join('   •   ');
+  if(preparedLine){ doc.text(`Prepared by: ${preparedLine}`, marginX, y); y += 5; }
+  doc.setTextColor(0);
+  y += 4;
+
+  // Customer
+  doc.setFont(undefined,'bold'); doc.setFontSize(11);
+  doc.text('Prepared For', marginX, y); y += 5;
+  doc.setFont(undefined,'normal'); doc.setFontSize(10);
+  const custLines = [quote.customer.name, quote.customer.address, [quote.customer.mobile, quote.customer.email].filter(Boolean).join('   •   ')].filter(Boolean);
+  custLines.forEach(l=>{
+    const wrapped = doc.splitTextToSize(l, 180);
+    pageBreak(wrapped.length*5);
+    doc.text(wrapped, marginX, y);
+    y += wrapped.length*5;
+  });
+  y += 4;
+
+  // Comments
+  if(quote.comments){
+    pageBreak(10);
+    doc.setFont(undefined,'bold'); doc.setFontSize(11);
+    doc.text('Project Comments', marginX, y); y += 5;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9.5);
+    const lines = doc.splitTextToSize(quote.comments, 180);
+    pageBreak(lines.length*4.5);
+    doc.text(lines, marginX, y);
+    y += lines.length*4.5 + 5;
+  }
+
+  // Photos
+  if(quote.photos.length){
+    pageBreak(12);
+    doc.setFont(undefined,'bold'); doc.setFontSize(11);
+    doc.text('Site / Reference Photos', marginX, y); y += 6;
+    doc.setFont(undefined,'normal');
+    const colX = [marginX, marginX+95], boxW = 85, boxH = 50;
+    for(let i=0; i<quote.photos.length; i+=2){
+      pageBreak(boxH + 8);
+      for(let j=0; j<2; j++){
+        const photo = quote.photos[i+j];
+        if(!photo) continue;
+        try{
+          const props = doc.getImageProperties(photo.data);
+          let w = boxW, h = boxW / (props.width/props.height);
+          if(h > boxH){ h = boxH; w = boxH * (props.width/props.height); }
+          doc.addImage(photo.data, props.fileType, colX[j], y, w, h);
+        }catch(e){ /* skip unsupported image */ }
+        if(photo.caption){
+          doc.setFontSize(8); doc.setTextColor(90);
+          doc.text(doc.splitTextToSize(photo.caption, boxW), colX[j], y + boxH + 4);
+          doc.setTextColor(0);
+        }
+      }
+      y += boxH + 9;
+    }
+    y += 2;
+  }
+
+  // Items table
+  pageBreak(14);
+  doc.setFont(undefined,'bold'); doc.setFontSize(11);
+  doc.text('Quote Breakdown', marginX, y); y += 6;
+  doc.setFontSize(9);
+  doc.text('Description', marginX, y);
+  doc.text('Qty', marginX+100, y, {align:'right'});
+  doc.text('Unit Price', marginX+135, y, {align:'right'});
+  doc.text('Total', marginX+180, y, {align:'right'});
+  y += 2;
+  doc.setDrawColor(200);
+  doc.line(marginX, y, marginX+180, y);
+  y += 4;
+  doc.setFont(undefined,'normal');
+  quote.items.forEach(it=>{
+    const descLines = doc.splitTextToSize(it.desc || '', 90);
+    const rowH = Math.max(descLines.length*4.5, 5);
+    pageBreak(rowH + 2);
+    doc.text(descLines, marginX, y);
+    doc.text(String(it.qty||0), marginX+100, y, {align:'right'});
+    doc.text(fmt(it.price), marginX+135, y, {align:'right'});
+    doc.text(fmt((it.qty||0)*(it.price||0)), marginX+180, y, {align:'right'});
+    y += rowH + 2;
+  });
+  doc.line(marginX, y, marginX+180, y);
+  y += 6;
+
+  // Totals
+  const { subtotal, discountAmt, total, deposit } = computeTotals(quote);
+  doc.setFontSize(10);
+  if(discountAmt > 0){
+    doc.text('Subtotal', marginX+135, y, {align:'right'});
+    doc.text(fmt(subtotal), marginX+180, y, {align:'right'});
+    y += 5;
+    const discLabel = 'Discount' + (quote.discount.reason ? ` (${quote.discount.reason})` : '');
+    doc.text(discLabel, marginX+135, y, {align:'right'});
+    doc.text('-' + fmt(discountAmt), marginX+180, y, {align:'right'});
+    y += 5;
+  }
+  doc.text(`Deposit required (${quote.depositPct}%)`, marginX+135, y, {align:'right'});
+  doc.text(fmt(deposit), marginX+180, y, {align:'right'});
+  y += 6;
+  doc.setFont(undefined,'bold'); doc.setFontSize(13);
+  doc.text('TOTAL', marginX+135, y, {align:'right'});
+  doc.text(fmt(total), marginX+180, y, {align:'right'});
+  doc.setFont(undefined,'normal');
+  y += 10;
+
+  // Terms
+  if(quote.terms){
+    pageBreak(10);
+    doc.setFont(undefined,'bold'); doc.setFontSize(10);
+    doc.text('Terms & Conditions', marginX, y); y += 5;
+    doc.setFont(undefined,'normal'); doc.setFontSize(8); doc.setTextColor(90);
+    const termLines = doc.splitTextToSize(quote.terms, 180);
+    pageBreak(termLines.length*3.8);
+    doc.text(termLines, marginX, y);
+    y += termLines.length*3.8 + 6;
+    doc.setTextColor(0);
+  }
+
+  // Footer
+  pageBreak(10);
+  doc.setFontSize(8); doc.setTextColor(120);
+  const footerParts = [];
+  if(settings.phone || settings.email) footerParts.push(`Questions? ${[settings.phone, settings.email].filter(Boolean).join('  •  ')}`);
+  const bank = [settings.companyName, settings.bankAccount ? 'Account: '+settings.bankAccount : '', settings.sortCode ? 'Sort Code: '+settings.sortCode : ''].filter(Boolean).join('  —  ');
+  if(bank) footerParts.push(bank);
+  footerParts.forEach(p=>{ doc.text(p, marginX, y, {align:'left'}); y += 4; });
+
+  return doc;
+}
+
+function quotePdfFilename(){
+  const safeName = (quote.customer.name || 'quote').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'');
+  return `Quote-${quote.ref}-${safeName}.pdf`;
+}
+
+function downloadQuotePdf(){
+  recalc();
+  const doc = buildQuotePdf();
+  doc.save(quotePdfFilename());
+}
+
+// ---------- Send to customer (one-tap share) ----------
+async function sendToCustomer(){
+  recalc();
+  const doc = buildQuotePdf();
+  const blob = doc.output('blob');
+  const filename = quotePdfFilename();
+  const shareText = `Hi ${quote.customer.name || ''}, please find your quote from ${settings.companyName} attached (Ref ${quote.ref}, total ${fmt(computeTotals(quote).total)}).`;
+
+  let file;
+  try{ file = new File([blob], filename, {type:'application/pdf'}); }catch(e){ file = null; }
+
+  if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+    try{
+      await navigator.share({ files:[file], title:`Quote ${quote.ref}`, text:shareText });
+      return;
+    }catch(err){
+      if(err && err.name === 'AbortError') return; // user cancelled the share sheet
+      // fall through to the download+mailto fallback below
+    }
+  }
+
+  // Fallback for browsers without file sharing (mostly desktop): download the PDF,
+  // then open a pre-filled email — the PDF still needs attaching by hand.
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+
   const subject = encodeURIComponent(`Your quote from ${settings.companyName} — ${quote.ref}`);
-  const body = encodeURIComponent(lines);
+  const body = encodeURIComponent(quoteSummaryLines().join('\n'));
   const to = encodeURIComponent(quote.customer.email || '');
+  alert('Your browser can\'t attach files directly — the PDF has been downloaded. Attach it to the email that\'s about to open.');
   window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
 }
 

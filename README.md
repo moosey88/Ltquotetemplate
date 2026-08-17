@@ -16,6 +16,8 @@ GitHub Pages: Settings → Pages → deploy from the `main` branch / root).
 - Project comments (prefilled from your default terms/description in Settings)
 - Site/reference photos with captions — attach what you saw on the visit
 - Line items table (description, qty, unit price) with an auto-calculated total
+- Discount — quick 5/10/15% buttons, or a custom % or £ amount with a reason,
+  applied to the subtotal before deposit/total
 - Deposit % and total, calculated live
 - Terms & conditions text
 - Footer with your contact and bank details (from Settings)
@@ -42,12 +44,25 @@ fee %, quote validity in days, default terms, default project comments).
 
 - **Save** stores the current quote in the browser (localStorage) so you can
   come back to it later via the **Load saved quote** dropdown.
-- **Print / PDF** opens the browser print dialog with the internal tab and
-  all app chrome hidden — "Save as PDF" gives you a clean customer-facing
-  document.
-- **Email** opens your default mail client with a plain-text summary of the
-  quote pre-filled, addressed to the customer's email. Attach the printed
-  PDF manually if you want the formatted version with photos.
+- **Print** opens the browser print dialog with the internal tab and all app
+  chrome hidden — "Save as PDF" from there gives you a clean customer-facing
+  document too.
+- **Download PDF** generates a properly formatted quote PDF (header, customer
+  details, photos, line items, discount, totals, terms, footer) using the
+  vendored `jspdf` library — works fully offline, no server involved.
+- **Send to Customer** builds the same PDF and hands it to your device's
+  native share sheet (`navigator.share`) so on a phone you can tap through to
+  Mail/Messages/WhatsApp with the PDF already attached — genuinely one tap on
+  supported mobile browsers. On desktop browsers that don't support sharing
+  files, it falls back to downloading the PDF and opening a pre-filled email
+  (recipient, subject, plain-text summary) for you to attach it to by hand.
+
+  Worth knowing: no fully static web app can silently fire off an email on
+  your behalf — browsers require a person to complete the final send/attach
+  step for security reasons. This is the fastest version of that possible
+  without standing up a backend and an email-sending service (e.g. via
+  Brevo) to send automatically; that's a bigger, separate build if it's ever
+  worth doing.
 
 ## Data & privacy
 

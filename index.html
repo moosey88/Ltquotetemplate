@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quote &amp; Estimate Builder</title>
+<style>
+  :root{
+    --brand:#1f6f4a;
+    --brand-dark:#154d33;
+    --ink:#1c2321;
+    --muted:#6b7570;
+    --line:#dfe4e1;
+    --bg:#f4f6f5;
+    --card:#ffffff;
+    --danger:#b3403a;
+    --warn:#a8710a;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  header.appbar{
+    background:var(--brand-dark);
+    color:#fff;
+    padding:10px 16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    position:sticky;
+    top:0;
+    z-index:50;
+  }
+  header.appbar h1{
+    font-size:16px;
+    margin:0;
+    font-weight:600;
+    margin-right:auto;
+  }
+  header.appbar button, .btn{
+    background:var(--brand);
+    color:#fff;
+    border:none;
+    border-radius:8px;
+    padding:8px 12px;
+    font-size:13px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  header.appbar button:hover, .btn:hover{ background:#268056; }
+  header.appbar select{
+    padding:7px 8px;
+    border-radius:8px;
+    border:none;
+    font-size:13px;
+  }
+  .btn.secondary{ background:#3a4741; }
+  .btn.secondary:hover{ background:#485751; }
+  .btn.danger{ background:var(--danger); }
+  .btn.small{ padding:4px 8px; font-size:12px; }
+
+  main{
+    max-width:900px;
+    margin:0 auto;
+    padding:16px;
+  }
+  .tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:14px;
+  }
+  .tabs button{
+    flex:1;
+    padding:10px;
+    border:1px solid var(--line);
+    background:#eef1ef;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:14px;
+    font-weight:600;
+    color:var(--muted);
+  }
+  .tabs button.active{
+    background:var(--brand);
+    color:#fff;
+    border-color:var(--brand);
+  }
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .card h2{
+    font-size:14px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--muted);
+    margin:0 0 12px;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .grid.cols-3{ grid-template-columns:1fr 1fr 1fr; }
+  @media (max-width:600px){
+    .grid, .grid.cols-3{ grid-template-columns:1fr; }
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:4px;
+    font-weight:600;
+  }
+  input, textarea, select{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:14px;
+    font-family:inherit;
+    background:#fff;
+    color:var(--ink);
+  }
+  textarea{ resize:vertical; min-height:70px; }
+  .field{ margin-bottom:10px; }
+
+  table.items{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  table.items th{
+    text-align:left;
+    font-size:11px;
+    text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--line);
+    padding:6px 4px;
+  }
+  table.items td{
+    padding:6px 4px;
+    border-bottom:1px solid var(--line);
+    vertical-align:middle;
+  }
+  table.items input{ padding:6px; font-size:13px; }
+  table.items td.num{ text-align:right; white-space:nowrap; }
+  .row-photo-btn{
+    background:none;
+    border:1px dashed var(--line);
+    border-radius:6px;
+    padding:4px 6px;
+    font-size:11px;
+    cursor:pointer;
+    color:var(--muted);
+  }
+  .thumb{
+    width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--line);
+    vertical-align:middle;
+  }
+  .totals{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:4px;
+    margin-top:10px;
+    font-size:14px;
+  }
+  .totals .grand{
+    font-size:20px;
+    font-weight:700;
+    color:var(--brand-dark);
+  }
+  .photo-gallery{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+    gap:10px;
+    margin-top:8px;
+  }
+  .photo-item{
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+    background:#fafafa;
+  }
+  .photo-item img{
+    width:100%;
+    height:100px;
+    object-fit:cover;
+    display:block;
+  }
+  .photo-item .cap{
+    padding:4px;
+  }
+  .photo-item input{
+    font-size:11px;
+    padding:4px;
+  }
+  .photo-item .remove{
+    width:100%;
+    border:none;
+    background:var(--danger);
+    color:#fff;
+    font-size:11px;
+    padding:3px;
+    cursor:pointer;
+  }
+  .add-photo-btn{
+    border:2px dashed var(--line);
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100px;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:13px;
+    text-align:center;
+  }
+  .internal-banner{
+    background:#fff4d6;
+    border:1px solid var(--warn);
+    color:#6b4a00;
+    padding:8px 12px;
+    border-radius:8px;
+    font-size:12px;
+    font-weight:600;
+    margin-bottom:14px;
+    text-align:center;
+  }
+  .calc-out{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:6px 12px;
+    font-size:14px;
+    padding:4px 0;
+  }
+  .calc-out div.k{ color:var(--muted); }
+  .calc-out div.v{ text-align:right; font-weight:600; }
+  .calc-out div.hl{ color:var(--brand-dark); font-size:16px; }
+
+  footer.quote-footer{
+    text-align:center;
+    font-size:12px;
+    color:var(--muted);
+    padding:12px 0;
+    line-height:1.6;
+  }
+  .brand-title{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:6px;
+  }
+  .brand-title img{ height:40px; }
+  .brand-title h2{ margin:0; font-size:20px; color:var(--brand-dark); }
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.4);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:16px;
+  }
+  .modal-backdrop.show{ display:flex; }
+  .modal{
+    background:#fff; border-radius:10px; padding:18px; max-width:480px; width:100%;
+    max-height:88vh; overflow:auto;
+  }
+  .modal h2{ margin-top:0; font-size:16px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+  .quote-list-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px; border-bottom:1px solid var(--line); font-size:13px; cursor:pointer;
+  }
+  .quote-list-item:hover{ background:#f4f6f5; }
+  .quote-list-item .meta{ color:var(--muted); font-size:11px; }
+  .icon-btn{
+    background:none; border:none; cursor:pointer; color:var(--danger); font-size:14px;
+  }
+  small.hint{ color:var(--muted); display:block; margin-top:2px; }
+
+  @media print{
+    header.appbar, .tabs, .no-print{ display:none !important; }
+    body{ background:#fff; }
+    main{ max-width:100%; padding:0; }
+    .card{ border:none; box-shadow:none; padding:0 0 14px; margin-bottom:10px; }
+    #panel-internal{ display:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <h1>Quote &amp; Estimate Builder</h1>
+  <select id="loadSelect" class="no-print" title="Load a saved quote"></select>
+  <button class="no-print" onclick="newQuote()">New</button>
+  <button class="no-print" onclick="saveQuote()">Save</button>
+  <button class="no-print" onclick="deleteCurrentQuote()">Delete</button>
+  <button class="no-print" onclick="openSettings()">Settings</button>
+  <button class="no-print" onclick="window.print()">Print / PDF</button>
+  <button class="no-print" onclick="emailQuote()">Email</button>
+</header>
+
+<main>
+  <div class="tabs no-print">
+    <button id="tabBtnQuote" class="active" onclick="showTab('quote')">Customer Quote</button>
+    <button id="tabBtnInternal" onclick="showTab('internal')">🔒 Internal Margins &amp; Notes</button>
+  </div>
+
+  <!-- ===================== CUSTOMER QUOTE TAB ===================== -->
+  <div id="panel-quote" class="tab-panel active">
+
+    <div class="card">
+      <div class="brand-title">
+        <img id="logoImg" src="" style="display:none">
+        <h2 id="companyNameDisplay">Your Company</h2>
+      </div>
+      <div class="grid cols-3">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="q_date">
+        </div>
+        <div class="field">
+          <label>Reference #</label>
+          <input type="text" id="q_ref">
+        </div>
+        <div class="field">
+          <label>Valid Until</label>
+          <input type="date" id="q_validUntil">
+        </div>
+      </div>
+      <div class="grid cols-3">
+        <div class="field">
+          <label>Prepared By</label>
+          <input type="text" id="q_preparedBy">
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input type="text" id="q_phone">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="text" id="q_email">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Customer Details</h2>
+      <div class="grid">
+        <div class="field"><label>Full Name</label><input type="text" id="c_name"></div>
+        <div class="field"><label>Mobile</label><input type="text" id="c_mobile"></div>
+        <div class="field"><label>Email</label><input type="text" id="c_email"></div>
+        <div class="field"><label>Address</label><input type="text" id="c_address"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Project Comments</h2>
+      <div class="field">
+        <textarea id="q_comments" rows="5"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Site / Reference Photos</h2>
+      <small class="hint">Photos of the job so the customer can see what was assessed.</small>
+      <div class="photo-gallery" id="photoGallery"></div>
+      <div class="add-photo-btn no-print" onclick="document.getElementById('photoInput').click()">+ Add photo</div>
+      <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="addPhotos(this.files)">
+    </div>
+
+    <div class="card">
+      <h2>Quote Breakdown</h2>
+      <table class="items" id="itemsTable">
+        <thead>
+          <tr>
+            <th style="width:40%">Description</th>
+            <th>Qty</th>
+            <th>Unit Price (£)</th>
+            <th>Total</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+      <button class="btn small no-print" style="margin-top:8px" onclick="addItemRow()">+ Add line item</button>
+
+      <div class="totals">
+        <div class="field" style="max-width:200px;">
+          <label>Deposit %</label>
+          <input type="number" id="q_depositPct" min="0" max="100" step="1" oninput="recalc()">
+        </div>
+        <div>Deposit required: <strong id="depositAmt">£0.00</strong></div>
+        <div class="grand">Total: <span id="grandTotal">£0.00</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Terms &amp; Conditions</h2>
+      <div class="field">
+        <textarea id="q_terms" rows="4"></textarea>
+      </div>
+    </div>
+
+    <footer class="quote-footer" id="quoteFooter"></footer>
+  </div>
+
+  <!-- ===================== INTERNAL TAB ===================== -->
+  <div id="panel-internal" class="tab-panel">
+    <div class="internal-banner">🔒 INTERNAL USE ONLY — this tab is never printed or sent to the customer</div>
+
+    <div class="card">
+      <h2>Margin Calculator</h2>
+      <div class="grid">
+        <div class="field">
+          <label>Customer Price / Revenue (£)</label>
+          <input type="number" id="i_revenue" readonly>
+          <small class="hint">Auto-filled from the quote total</small>
+        </div>
+        <div class="field">
+          <label>Fee % (franchise / platform / referral)</label>
+          <input type="number" id="i_feePct" step="0.1" oninput="recalc()">
+        </div>
+        <div class="field">
+          <label>Labour Cost (£)</label>
+          <input type="number" id="i_labour" step="0.01" oninput="recalc()">
+        </div>
+        <div class="field">
+          <label>Materials Cost (£)</label>
+          <input type="number" id="i_materials" step="0.01" oninput="recalc()">
+        </div>
+      </div>
+
+      <div class="calc-out">
+        <div class="k">Profit before fee (Revenue − labour − materials)</div><div class="v" id="out_profitBefore">£0.00</div>
+        <div class="k">Fee amount (Revenue × fee %)</div><div class="v" id="out_fee">£0.00</div>
+        <div class="k hl">Net Profit (after fee)</div><div class="v hl" id="out_netProfit">£0.00</div>
+        <div class="k">Net Margin % (Net ÷ Revenue)</div><div class="v" id="out_netMargin">0%</div>
+        <div class="k">Markup % (Profit before fee ÷ Costs)</div><div class="v" id="out_markup">0%</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Materials Needed</h2>
+      <table class="items" id="materialsTable">
+        <thead>
+          <tr><th>Item</th><th>Cost (£)</th><th>Supplier</th><th>Notes</th><th></th></tr>
+        </thead>
+        <tbody id="materialsBody"></tbody>
+      </table>
+      <button class="btn small" style="margin-top:8px" onclick="addMaterialRow()">+ Add material</button>
+      <button class="btn small secondary" style="margin-top:8px" onclick="sumMaterialsIntoCalc()">Sum into Materials Cost above</button>
+    </div>
+
+    <div class="card">
+      <h2>Internal Notes</h2>
+      <textarea id="i_notes" rows="6" placeholder="Anything worth remembering: access notes, tricky bits, who to call, pricing rationale..."></textarea>
+    </div>
+  </div>
+</main>
+
+<!-- Settings modal -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h2>Settings (defaults for new quotes)</h2>
+    <div class="field"><label>Company Name</label><input type="text" id="s_companyName"></div>
+    <div class="field"><label>Logo (image)</label><input type="file" id="s_logoFile" accept="image/*" onchange="handleLogoUpload(this.files[0])"></div>
+    <div class="field"><label>Prepared By (default)</label><input type="text" id="s_preparedBy"></div>
+    <div class="grid">
+      <div class="field"><label>Phone</label><input type="text" id="s_phone"></div>
+      <div class="field"><label>Email</label><input type="text" id="s_email"></div>
+      <div class="field"><label>Website</label><input type="text" id="s_website"></div>
+      <div class="field"><label>Bank Account Name</label><input type="text" id="s_bankName"></div>
+      <div class="field"><label>Account Number</label><input type="text" id="s_bankAccount"></div>
+      <div class="field"><label>Sort Code</label><input type="text" id="s_sortCode"></div>
+      <div class="field"><label>Default Deposit %</label><input type="number" id="s_depositPct"></div>
+      <div class="field"><label>Default Fee %</label><input type="number" id="s_feePct" step="0.1"></div>
+      <div class="field"><label>Quote Valid For (days)</label><input type="number" id="s_validDays"></div>
+    </div>
+    <div class="field"><label>Default Terms &amp; Conditions</label><textarea id="s_terms" rows="4"></textarea></div>
+    <div class="field"><label>Default Project Comments</label><textarea id="s_comments" rows="3"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LS_QUOTES = 'quoteapp_quotes_v1';
+const LS_SETTINGS = 'quoteapp_settings_v1';
+const LS_CURRENT = 'quoteapp_current_v1';
+
+const defaultSettings = {
+  companyName:'Your Company',
+  logo:'',
+  preparedBy:'',
+  phone:'',
+  email:'',
+  website:'',
+  bankName:'',
+  bankAccount:'',
+  sortCode:'',
+  depositPct:50,
+  feePct:9,
+  validDays:14,
+  terms:'This quote covers work and includes any materials required based on initial assessment. Additional charges may apply for unexpected tasks or materials. Clients must provide access to the work area, remove personal items, and obtain any necessary permits. Any changes to the project scope may affect pricing and timeline. Cancellation fees apply for late cancellations. By accepting this quote, both parties agree to these terms and conditions.',
+  comments:''
+};
+
+let settings = loadSettings();
+let quote = null;
+
+function loadSettings(){
+  const raw = localStorage.getItem(LS_SETTINGS);
+  return raw ? Object.assign({}, defaultSettings, JSON.parse(raw)) : Object.assign({}, defaultSettings);
+}
+function persistSettings(){ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }
+
+function loadAllQuotes(){
+  const raw = localStorage.getItem(LS_QUOTES);
+  return raw ? JSON.parse(raw) : {};
+}
+function persistAllQuotes(all){ localStorage.setItem(LS_QUOTES, JSON.stringify(all)); }
+
+function blankQuote(){
+  const today = new Date();
+  const valid = new Date(today.getTime() + settings.validDays*86400000);
+  return {
+    id: 'q_' + Date.now(),
+    date: today.toISOString().slice(0,10),
+    ref: 'Q-' + Date.now().toString().slice(-6),
+    validUntil: valid.toISOString().slice(0,10),
+    preparedBy: settings.preparedBy,
+    phone: settings.phone,
+    email: settings.email,
+    customer:{ name:'', mobile:'', email:'', address:'' },
+    comments: settings.comments,
+    photos: [],
+    items: [ {desc:'', qty:1, price:0} ],
+    depositPct: settings.depositPct,
+    terms: settings.terms,
+    internal:{
+      feePct: settings.feePct,
+      labour: 0,
+      materials: 0,
+      materialsList: [],
+      notes: ''
+    }
+  };
+}
+
+function fmt(n){ return '£' + (Number(n)||0).toFixed(2); }
+
+// ---------- Rendering ----------
+function renderQuoteToForm(){
+  document.getElementById('companyNameDisplay').textContent = settings.companyName || 'Your Company';
+  const logoImg = document.getElementById('logoImg');
+  if(settings.logo){ logoImg.src = settings.logo; logoImg.style.display='inline-block'; }
+  else { logoImg.style.display='none'; }
+
+  document.getElementById('q_date').value = quote.date;
+  document.getElementById('q_ref').value = quote.ref;
+  document.getElementById('q_validUntil').value = quote.validUntil;
+  document.getElementById('q_preparedBy').value = quote.preparedBy;
+  document.getElementById('q_phone').value = quote.phone;
+  document.getElementById('q_email').value = quote.email;
+
+  document.getElementById('c_name').value = quote.customer.name;
+  document.getElementById('c_mobile').value = quote.customer.mobile;
+  document.getElementById('c_email').value = quote.customer.email;
+  document.getElementById('c_address').value = quote.customer.address;
+
+  document.getElementById('q_comments').value = quote.comments;
+  document.getElementById('q_terms').value = quote.terms;
+  document.getElementById('q_depositPct').value = quote.depositPct;
+
+  renderPhotos();
+  renderItems();
+
+  document.getElementById('i_feePct').value = quote.internal.feePct;
+  document.getElementById('i_labour').value = quote.internal.labour;
+  document.getElementById('i_materials').value = quote.internal.materials;
+  document.getElementById('i_notes').value = quote.internal.notes;
+  renderMaterials();
+
+  renderFooter();
+  recalc();
+}
+
+function renderFooter(){
+  const parts = [];
+  if(settings.phone || settings.email) parts.push(`If you have any questions concerning this quotation, please contact ${settings.phone || ''}${settings.phone && settings.email ? ', ' : ''}${settings.email || ''}`);
+  const bank = [settings.companyName, settings.bankAccount ? 'Account: '+settings.bankAccount : '', settings.sortCode ? 'Sort Code: '+settings.sortCode : ''].filter(Boolean).join(' — ');
+  if(bank) parts.push(bank);
+  document.getElementById('quoteFooter').innerHTML = parts.map(p=>`<div>${escapeHtml(p)}</div>`).join('');
+}
+
+function renderPhotos(){
+  const g = document.getElementById('photoGallery');
+  g.innerHTML = '';
+  quote.photos.forEach((p, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'photo-item';
+    div.innerHTML = `
+      <img src="${p.data}">
+      <div class="cap"><input type="text" placeholder="Caption" value="${escapeAttr(p.caption||'')}" oninput="quote.photos[${idx}].caption=this.value"></div>
+      <button class="remove no-print" onclick="removePhoto(${idx})">Remove</button>
+    `;
+    g.appendChild(div);
+  });
+}
+
+function renderItems(){
+  const body = document.getElementById('itemsBody');
+  body.innerHTML = '';
+  quote.items.forEach((item, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escapeAttr(item.desc)}" oninput="quote.items[${idx}].desc=this.value"></td>
+      <td style="width:70px"><input type="number" value="${item.qty}" min="0" step="1" oninput="quote.items[${idx}].qty=parseFloat(this.value)||0;recalc()"></td>
+      <td style="width:110px"><input type="number" value="${item.price}" min="0" step="0.01" oninput="quote.items[${idx}].price=parseFloat(this.value)||0;recalc()"></td>
+      <td class="num">${fmt((item.qty||0)*(item.price||0))}</td>
+      <td class="no-print"><button class="icon-btn" onclick="removeItemRow(${idx})">✕</button></td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function renderMaterials(){
+  const body = document.getElementById('materialsBody');
+  body.innerHTML = '';
+  quote.internal.materialsList.forEach((m, idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escapeAttr(m.item)}" oninput="quote.internal.materialsList[${idx}].item=this.value"></td>
+      <td style="width:100px"><input type="number" value="${m.cost}" step="0.01" oninput="quote.internal.materialsList[${idx}].cost=parseFloat(this.value)||0"></td>
+      <td><input type="text" value="${escapeAttr(m.supplier)}" oninput="quote.internal.materialsList[${idx}].supplier=this.value"></td>
+      <td><input type="text" value="${escapeAttr(m.notes)}" oninput="quote.internal.materialsList[${idx}].notes=this.value"></td>
+      <td><button class="icon-btn" onclick="removeMaterialRow(${idx})">✕</button></td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+// ---------- Actions ----------
+function addItemRow(){ quote.items.push({desc:'',qty:1,price:0}); renderItems(); recalc(); }
+function removeItemRow(idx){ quote.items.splice(idx,1); renderItems(); recalc(); }
+function addMaterialRow(){ quote.internal.materialsList.push({item:'',cost:0,supplier:'',notes:''}); renderMaterials(); }
+function removeMaterialRow(idx){ quote.internal.materialsList.splice(idx,1); renderMaterials(); }
+
+function addPhotos(files){
+  [...files].forEach(f=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      quote.photos.push({data:e.target.result, caption:''});
+      renderPhotos();
+    };
+    reader.readAsDataURL(f);
+  });
+  document.getElementById('photoInput').value = '';
+}
+function removePhoto(idx){ quote.photos.splice(idx,1); renderPhotos(); }
+
+function sumMaterialsIntoCalc(){
+  const sum = quote.internal.materialsList.reduce((a,m)=>a+(Number(m.cost)||0),0);
+  document.getElementById('i_materials').value = sum.toFixed(2);
+  quote.internal.materials = sum;
+  recalc();
+}
+
+function recalc(){
+  // pull form values back into quote object
+  quote.date = document.getElementById('q_date').value;
+  quote.ref = document.getElementById('q_ref').value;
+  quote.validUntil = document.getElementById('q_validUntil').value;
+  quote.preparedBy = document.getElementById('q_preparedBy').value;
+  quote.phone = document.getElementById('q_phone').value;
+  quote.email = document.getElementById('q_email').value;
+  quote.customer.name = document.getElementById('c_name').value;
+  quote.customer.mobile = document.getElementById('c_mobile').value;
+  quote.customer.email = document.getElementById('c_email').value;
+  quote.customer.address = document.getElementById('c_address').value;
+  quote.comments = document.getElementById('q_comments').value;
+  quote.terms = document.getElementById('q_terms').value;
+  quote.depositPct = parseFloat(document.getElementById('q_depositPct').value)||0;
+  quote.internal.feePct = parseFloat(document.getElementById('i_feePct').value)||0;
+  quote.internal.labour = parseFloat(document.getElementById('i_labour').value)||0;
+  quote.internal.materials = parseFloat(document.getElementById('i_materials').value)||0;
+  quote.internal.notes = document.getElementById('i_notes').value;
+
+  const total = quote.items.reduce((a,it)=>a + (Number(it.qty)||0)*(Number(it.price)||0), 0);
+  const deposit = total * (quote.depositPct/100);
+  document.getElementById('grandTotal').textContent = fmt(total);
+  document.getElementById('depositAmt').textContent = fmt(deposit);
+
+  // internal calc
+  const revenue = total;
+  document.getElementById('i_revenue').value = revenue.toFixed(2);
+  const labour = quote.internal.labour;
+  const materials = quote.internal.materials;
+  const feePct = quote.internal.feePct/100;
+  const profitBefore = revenue - labour - materials;
+  const fee = revenue * feePct;
+  const netProfit = profitBefore - fee;
+  const netMargin = revenue ? (netProfit/revenue*100) : 0;
+  const costs = labour + materials;
+  const markup = costs ? (profitBefore/costs*100) : 0;
+
+  document.getElementById('out_profitBefore').textContent = fmt(profitBefore);
+  document.getElementById('out_fee').textContent = fmt(fee);
+  document.getElementById('out_netProfit').textContent = fmt(netProfit);
+  document.getElementById('out_netMargin').textContent = netMargin.toFixed(1)+'%';
+  document.getElementById('out_markup').textContent = markup.toFixed(1)+'%';
+
+  // re-render totals column of items table without losing focus each keystroke: just update the num cells
+  const rows = document.querySelectorAll('#itemsBody tr');
+  rows.forEach((tr, idx)=>{
+    const item = quote.items[idx];
+    if(item){ tr.children[3].textContent = fmt((item.qty||0)*(item.price||0)); }
+  });
+
+  localStorage.setItem(LS_CURRENT, JSON.stringify(quote));
+}
+
+// ---------- Save / Load ----------
+function saveQuote(){
+  recalc();
+  const all = loadAllQuotes();
+  all[quote.id] = quote;
+  persistAllQuotes(all);
+  refreshLoadSelect();
+  document.getElementById('loadSelect').value = quote.id;
+  alert('Quote saved: ' + (quote.customer.name || quote.ref));
+}
+
+function deleteCurrentQuote(){
+  if(!confirm('Delete this saved quote? This cannot be undone.')) return;
+  const all = loadAllQuotes();
+  delete all[quote.id];
+  persistAllQuotes(all);
+  refreshLoadSelect();
+  newQuote();
+}
+
+function refreshLoadSelect(){
+  const all = loadAllQuotes();
+  const sel = document.getElementById('loadSelect');
+  sel.innerHTML = '<option value="">Load saved quote…</option>';
+  Object.values(all).sort((a,b)=> (b.date||'').localeCompare(a.date||'')).forEach(q=>{
+    const opt = document.createElement('option');
+    opt.value = q.id;
+    opt.textContent = `${q.ref} — ${q.customer.name || 'No name'} (${q.date})`;
+    sel.appendChild(opt);
+  });
+}
+
+document.getElementById('loadSelect').addEventListener('change', function(){
+  if(!this.value) return;
+  const all = loadAllQuotes();
+  if(all[this.value]){
+    quote = all[this.value];
+    if(!quote.internal.materialsList) quote.internal.materialsList = [];
+    renderQuoteToForm();
+  }
+});
+
+function newQuote(){
+  quote = blankQuote();
+  renderQuoteToForm();
+  document.getElementById('loadSelect').value = '';
+}
+
+// ---------- Tabs ----------
+function showTab(name){
+  document.getElementById('panel-quote').classList.toggle('active', name==='quote');
+  document.getElementById('panel-internal').classList.toggle('active', name==='internal');
+  document.getElementById('tabBtnQuote').classList.toggle('active', name==='quote');
+  document.getElementById('tabBtnInternal').classList.toggle('active', name==='internal');
+}
+
+// ---------- Settings ----------
+function openSettings(){
+  document.getElementById('s_companyName').value = settings.companyName;
+  document.getElementById('s_preparedBy').value = settings.preparedBy;
+  document.getElementById('s_phone').value = settings.phone;
+  document.getElementById('s_email').value = settings.email;
+  document.getElementById('s_website').value = settings.website;
+  document.getElementById('s_bankName').value = settings.bankName;
+  document.getElementById('s_bankAccount').value = settings.bankAccount;
+  document.getElementById('s_sortCode').value = settings.sortCode;
+  document.getElementById('s_depositPct').value = settings.depositPct;
+  document.getElementById('s_feePct').value = settings.feePct;
+  document.getElementById('s_validDays').value = settings.validDays;
+  document.getElementById('s_terms').value = settings.terms;
+  document.getElementById('s_comments').value = settings.comments;
+  document.getElementById('settingsModal').classList.add('show');
+}
+function closeSettings(){ document.getElementById('settingsModal').classList.remove('show'); }
+
+function handleLogoUpload(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{ settings.logo = e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+function saveSettings(){
+  settings.companyName = document.getElementById('s_companyName').value;
+  settings.preparedBy = document.getElementById('s_preparedBy').value;
+  settings.phone = document.getElementById('s_phone').value;
+  settings.email = document.getElementById('s_email').value;
+  settings.website = document.getElementById('s_website').value;
+  settings.bankName = document.getElementById('s_bankName').value;
+  settings.bankAccount = document.getElementById('s_bankAccount').value;
+  settings.sortCode = document.getElementById('s_sortCode').value;
+  settings.depositPct = parseFloat(document.getElementById('s_depositPct').value)||0;
+  settings.feePct = parseFloat(document.getElementById('s_feePct').value)||0;
+  settings.validDays = parseInt(document.getElementById('s_validDays').value)||14;
+  settings.terms = document.getElementById('s_terms').value;
+  settings.comments = document.getElementById('s_comments').value;
+  persistSettings();
+  closeSettings();
+  renderFooter();
+  document.getElementById('companyNameDisplay').textContent = settings.companyName;
+  const logoImg = document.getElementById('logoImg');
+  if(settings.logo){ logoImg.src = settings.logo; logoImg.style.display='inline-block'; }
+}
+
+// ---------- Email (quick send) ----------
+function emailQuote(){
+  recalc();
+  const total = quote.items.reduce((a,it)=>a + (Number(it.qty)||0)*(Number(it.price)||0), 0);
+  const deposit = total * (quote.depositPct/100);
+  const lines = [
+    `Quote ${quote.ref} — ${settings.companyName}`,
+    `Date: ${quote.date}   Valid until: ${quote.validUntil}`,
+    '',
+    `Prepared for: ${quote.customer.name}`,
+    quote.customer.address,
+    '',
+    quote.comments,
+    '',
+    ...quote.items.map(it=>`- ${it.desc}  x${it.qty}  ${fmt(it.price)}  = ${fmt((it.qty||0)*(it.price||0))}`),
+    '',
+    `Deposit required (${quote.depositPct}%): ${fmt(deposit)}`,
+    `TOTAL: ${fmt(total)}`,
+    '',
+    quote.terms
+  ].join('\n');
+  const subject = encodeURIComponent(`Your quote from ${settings.companyName} — ${quote.ref}`);
+  const body = encodeURIComponent(lines);
+  const to = encodeURIComponent(quote.customer.email || '');
+  window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+}
+
+// ---------- Init ----------
+(function init(){
+  refreshLoadSelect();
+  const current = localStorage.getItem(LS_CURRENT);
+  if(current){
+    quote = JSON.parse(current);
+    if(!quote.internal.materialsList) quote.internal.materialsList = [];
+  } else {
+    quote = blankQuote();
+  }
+  renderQuoteToForm();
+})();
+</script>
+</body>
+</html>

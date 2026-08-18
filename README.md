@@ -14,7 +14,12 @@ GitHub Pages: Settings → Pages → deploy from the `main` branch / root).
 ### Customer Quote tab
 - Date, reference #, valid-until, prepared-by, and customer details
 - Project comments (prefilled from your default terms/description in Settings)
-- Line items table (description, qty, unit price) with an auto-calculated total
+- Line items table (description, qty, unit price) with an auto-calculated total.
+  Each item has an optional "+ Add details" field for a longer description —
+  useful context for bigger jobs, skippable for something as simple as
+  putting up a blind. A built-in library of starter snippets for common job
+  types (handyman, gardening, decorating, plumbing, etc.) gives a starting
+  point to edit rather than a blank box.
 - Discount — quick 5/10/15% buttons, or a custom % or £ amount with a reason,
   applied to the subtotal before deposit/total
 - Deposit % and total, calculated live

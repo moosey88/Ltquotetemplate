@@ -485,13 +485,15 @@
       </div>
 
       <h2 style="margin-top:16px;">Materials Needed</h2>
-      <table class="items" id="treasureMaterialsTable">
+      <small class="hint">Buy what's needed and keep the receipts — these get reimbursed once submitted to the office.</small>
+      <table class="items" id="treasureMaterialsTable" style="margin-top:8px;">
         <thead>
-          <tr><th>Item</th><th style="width:70px">Qty</th><th>Notes</th><th class="no-print"></th></tr>
+          <tr><th>Item</th><th style="width:70px">Qty</th><th style="width:100px">Est. Cost (£)</th><th>Notes</th><th class="no-print"></th></tr>
         </thead>
         <tbody id="treasureMaterialsBody"></tbody>
       </table>
       <button class="btn small no-print" style="margin-top:8px" onclick="addTreasureMaterialRow()">+ Add material</button>
+      <div style="margin-top:8px; font-size:14px; text-align:right;">Estimated materials total: <strong id="treasureMaterialsTotal">£0.00</strong></div>
 
       <div class="field" style="margin-top:14px;">
         <label>Notes for the Office</label>
@@ -664,7 +666,7 @@ function blankQuote(){
       unit: 'hours',
       value: 0,
       rate: 0,
-      materials: [ {item:'', qty:'', notes:''} ],
+      materials: [ {item:'', qty:'', cost:0, notes:''} ],
       notes: ''
     }
   };
@@ -860,13 +862,19 @@ function renderTreasureMaterials(){
     tr.innerHTML = `
       <td><input type="text" value="${escapeAttr(m.item)}" oninput="quote.treasure.materials[${idx}].item=this.value"></td>
       <td style="width:70px"><input type="text" value="${escapeAttr(m.qty)}" oninput="quote.treasure.materials[${idx}].qty=this.value"></td>
+      <td style="width:100px"><input type="number" min="0" step="0.01" value="${m.cost||0}" oninput="quote.treasure.materials[${idx}].cost=parseFloat(this.value)||0;updateTreasureMaterialsTotal()"></td>
       <td><input type="text" value="${escapeAttr(m.notes)}" oninput="quote.treasure.materials[${idx}].notes=this.value"></td>
       <td class="no-print"><button class="icon-btn" onclick="removeTreasureMaterialRow(${idx})">✕</button></td>
     `;
     body.appendChild(tr);
   });
+  updateTreasureMaterialsTotal();
 }
-function addTreasureMaterialRow(){ quote.treasure.materials.push({item:'',qty:'',notes:''}); renderTreasureMaterials(); }
+function updateTreasureMaterialsTotal(){
+  const total = quote.treasure.materials.reduce((sum,m)=>sum+(Number(m.cost)||0), 0);
+  document.getElementById('treasureMaterialsTotal').textContent = fmt(total);
+}
+function addTreasureMaterialRow(){ quote.treasure.materials.push({item:'',qty:'',cost:0,notes:''}); renderTreasureMaterials(); }
 function removeTreasureMaterialRow(idx){ quote.treasure.materials.splice(idx,1); renderTreasureMaterials(); }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
@@ -1018,7 +1026,7 @@ document.getElementById('loadSelect').addEventListener('change', function(){
     quote = all[this.value];
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
     if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',notes:''}], notes:'' };
+    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
     renderQuoteToForm();
   }
 });
@@ -1419,18 +1427,32 @@ function buildTreasureBriefPdf(){
 
   doc.setFont(undefined,'bold'); doc.setFontSize(10);
   doc.text('Materials Needed', marginX, y); y += 5;
-  doc.setFont(undefined,'normal'); doc.setFontSize(9);
-  const hasMaterials = quote.treasure.materials.some(m=>m.item);
-  if(hasMaterials){
-    quote.treasure.materials.filter(m=>m.item).forEach(m=>{
+  doc.setFont(undefined,'normal'); doc.setFontSize(8); doc.setTextColor(110);
+  doc.text('Buy what\'s needed and keep the receipts — reimbursed once submitted to the office.', marginX, y);
+  doc.setTextColor(0);
+  y += 5;
+  doc.setFontSize(9);
+  const namedMaterials = quote.treasure.materials.filter(m=>m.item);
+  if(namedMaterials.length){
+    let materialsCostTotal = 0;
+    namedMaterials.forEach(m=>{
       pageBreak(5);
-      const line = [m.item, m.qty, m.notes].filter(Boolean).join('  —  ');
+      const costPart = m.cost ? `£${Number(m.cost).toFixed(2)}` : '';
+      const line = [m.item, m.qty, costPart, m.notes].filter(Boolean).join('  —  ');
       doc.text(`• ${line}`, marginX, y);
       y += 5;
+      materialsCostTotal += Number(m.cost) || 0;
     });
+    if(materialsCostTotal > 0){
+      pageBreak(6);
+      doc.setFont(undefined,'bold');
+      doc.text(`Estimated materials total: £${materialsCostTotal.toFixed(2)}`, marginX, y);
+      doc.setFont(undefined,'normal');
+      y += 6;
+    }
   } else {
     doc.setTextColor(120);
-    doc.text('(blank lines for the Treasure to fill in on site)', marginX, y);
+    doc.text('(blank lines for the Treasure to fill in on site — item, qty, est. cost £, notes)', marginX, y);
     doc.setTextColor(0);
     y += 5;
     for(let i=0; i<4; i++){ doc.line(marginX, y, marginX+180, y); y += 7; }
@@ -1470,11 +1492,12 @@ function applyEstimateToInternal(){
   }
   const namedMaterials = t.materials.filter(m=>m.item);
   namedMaterials.forEach(m=>{
-    quote.internal.materialsList.push({ item:m.item, cost:0, supplier:'', notes:m.qty ? `Qty: ${m.qty}${m.notes ? ' — '+m.notes : ''}` : m.notes });
+    quote.internal.materialsList.push({ item:m.item, cost:m.cost||0, supplier:'', notes:m.qty ? `Qty: ${m.qty}${m.notes ? ' — '+m.notes : ''}` : m.notes });
   });
+  quote.internal.materials = quote.internal.materialsList.reduce((sum,m)=>sum+(Number(m.cost)||0), 0);
   renderQuoteToForm();
   showTab('internal');
-  alert('Applied: labour cost set from hours/days × rate, and materials copied into the Internal materials list (add costs/suppliers there).');
+  alert('Applied: labour cost set from hours/days × rate, materials copied into the Internal materials list with their estimated costs, and the Materials Cost total updated (add suppliers/adjust costs there if needed).');
 }
 
 async function sendTreasureEstimate(){
@@ -1487,8 +1510,11 @@ async function sendTreasureEstimate(){
     '',
     `Time needed: ${t.value} ${unitLabel}${t.rate > 0 ? ` @ £${t.rate.toFixed(2)}/${t.unit === 'days' ? 'day' : 'hour'}` : ''}`,
     '',
-    'Materials needed:',
-    ...t.materials.filter(m=>m.item).map(m=>`- ${m.item}${m.qty ? '  x'+m.qty : ''}${m.notes ? '  ('+m.notes+')' : ''}`),
+    'Materials needed (keep receipts for reimbursement):',
+    ...t.materials.filter(m=>m.item).map(m=>`- ${m.item}${m.qty ? '  x'+m.qty : ''}${m.cost ? '  £'+Number(m.cost).toFixed(2) : ''}${m.notes ? '  ('+m.notes+')' : ''}`),
+    ...(t.materials.reduce((sum,m)=>sum+(Number(m.cost)||0), 0) > 0
+      ? [`Estimated materials total: £${t.materials.reduce((sum,m)=>sum+(Number(m.cost)||0), 0).toFixed(2)}`]
+      : []),
     '',
     t.notes ? `Notes: ${t.notes}` : ''
   ];
@@ -1567,7 +1593,7 @@ async function sendToCustomer(){
     quote = JSON.parse(current);
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
     if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',notes:''}], notes:'' };
+    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
   } else {
     quote = blankQuote();
   }

@@ -466,7 +466,7 @@
     <div class="card">
       <h2>Their Estimate</h2>
       <small class="hint">For the Treasure to fill in on site — how long it'll take and what materials are needed.</small>
-      <div class="grid cols-3" style="margin-top:10px;">
+      <div class="grid" style="margin-top:10px;">
         <div class="field">
           <label>Time Needed</label>
           <select id="t_unit">
@@ -477,10 +477,6 @@
         <div class="field">
           <label id="t_valueLabel">Hours</label>
           <input type="number" id="t_value" min="0" step="0.5">
-        </div>
-        <div class="field">
-          <label id="t_rateLabel">Rate (£/hour)</label>
-          <input type="number" id="t_rate" min="0" step="0.01">
         </div>
       </div>
 
@@ -665,7 +661,6 @@ function blankQuote(){
       name: '',
       unit: 'hours',
       value: 0,
-      rate: 0,
       materials: [ {item:'', qty:'', cost:0, notes:''} ],
       notes: ''
     }
@@ -739,7 +734,6 @@ function renderQuoteToForm(){
   document.getElementById('t_name').value = quote.treasure.name;
   document.getElementById('t_unit').value = quote.treasure.unit;
   document.getElementById('t_value').value = quote.treasure.value;
-  document.getElementById('t_rate').value = quote.treasure.rate;
   document.getElementById('t_notes').value = quote.treasure.notes;
   updateTreasureUnitLabels();
   renderTreasureMaterials();
@@ -765,7 +759,6 @@ function renderTreasureJobInfo(){
 function updateTreasureUnitLabels(){
   const unit = document.getElementById('t_unit').value;
   document.getElementById('t_valueLabel').textContent = unit === 'days' ? 'Days' : 'Hours';
-  document.getElementById('t_rateLabel').textContent = unit === 'days' ? 'Rate (£/day)' : 'Rate (£/hour)';
 }
 document.getElementById('t_unit').addEventListener('change', updateTreasureUnitLabels);
 
@@ -945,7 +938,6 @@ function recalc(){
   quote.treasure.name = document.getElementById('t_name').value;
   quote.treasure.unit = document.getElementById('t_unit').value;
   quote.treasure.value = parseFloat(document.getElementById('t_value').value)||0;
-  quote.treasure.rate = parseFloat(document.getElementById('t_rate').value)||0;
   quote.treasure.notes = document.getElementById('t_notes').value;
 
   const { subtotal, discountAmt, total, deposit } = computeTotals(quote);
@@ -1026,7 +1018,7 @@ document.getElementById('loadSelect').addEventListener('change', function(){
     quote = all[this.value];
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
     if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
     renderQuoteToForm();
   }
 });
@@ -1419,10 +1411,6 @@ function buildTreasureBriefPdf(){
   const unitLabel = quote.treasure.unit === 'days' ? 'Days' : 'Hours';
   doc.text(`Time needed (${unitLabel}): ${quote.treasure.value > 0 ? quote.treasure.value : '_______________'}`, marginX, y);
   y += 6;
-  if(quote.treasure.rate > 0){
-    doc.text(`Rate: £${quote.treasure.rate.toFixed(2)} / ${quote.treasure.unit === 'days' ? 'day' : 'hour'}`, marginX, y);
-    y += 6;
-  }
   y += 2;
 
   doc.setFont(undefined,'bold'); doc.setFontSize(10);
@@ -1487,8 +1475,12 @@ function downloadTreasureBriefPdf(){
 function applyEstimateToInternal(){
   recalc();
   const t = quote.treasure;
-  if(t.value > 0 && t.rate > 0){
-    quote.internal.labour = t.value * t.rate;
+  if(t.value > 0){
+    const unitLabel = t.unit === 'days' ? 'days' : 'hours';
+    const timeNote = `Treasure estimated: ${t.value} ${unitLabel}${t.name ? ' ('+t.name+')' : ''}`;
+    if(!quote.internal.notes.includes(timeNote)){
+      quote.internal.notes = quote.internal.notes ? quote.internal.notes + '\n' + timeNote : timeNote;
+    }
   }
   const namedMaterials = t.materials.filter(m=>m.item);
   namedMaterials.forEach(m=>{
@@ -1497,7 +1489,7 @@ function applyEstimateToInternal(){
   quote.internal.materials = quote.internal.materialsList.reduce((sum,m)=>sum+(Number(m.cost)||0), 0);
   renderQuoteToForm();
   showTab('internal');
-  alert('Applied: labour cost set from hours/days × rate, materials copied into the Internal materials list with their estimated costs, and the Materials Cost total updated (add suppliers/adjust costs there if needed).');
+  alert('Applied: the hours/days estimate was added to your Internal notes as a reference for setting pay, materials were copied into the Internal materials list with their estimated costs, and the Materials Cost total was updated.');
 }
 
 async function sendTreasureEstimate(){
@@ -1508,7 +1500,7 @@ async function sendTreasureEstimate(){
     `Estimate from ${t.name || 'Treasure'} — Quote ${quote.ref}`,
     quote.customer.name ? `Job: ${quote.customer.name}${quote.customer.address ? ', '+quote.customer.address : ''}` : '',
     '',
-    `Time needed: ${t.value} ${unitLabel}${t.rate > 0 ? ` @ £${t.rate.toFixed(2)}/${t.unit === 'days' ? 'day' : 'hour'}` : ''}`,
+    `Time needed: ${t.value} ${unitLabel}`,
     '',
     'Materials needed (keep receipts for reimbursement):',
     ...t.materials.filter(m=>m.item).map(m=>`- ${m.item}${m.qty ? '  x'+m.qty : ''}${m.cost ? '  £'+Number(m.cost).toFixed(2) : ''}${m.notes ? '  ('+m.notes+')' : ''}`),
@@ -1593,7 +1585,7 @@ async function sendToCustomer(){
     quote = JSON.parse(current);
     if(!quote.internal.materialsList) quote.internal.materialsList = [];
     if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, rate:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
   } else {
     quote = blankQuote();
   }

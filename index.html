@@ -645,7 +645,7 @@ function blankQuote(){
     customer:{ name:'', mobile:'', email:'', address:'' },
     comments: settings.comments,
     photos: [],
-    items: [ {desc:'', qty:1, price:0} ],
+    items: [ {desc:'', qty:1, price:0, details:''} ],
     discount: { type:'percent', value:0, reason:'' },
     depositPct: settings.depositPct,
     terms: settings.terms,
@@ -803,15 +803,34 @@ function renderItems(){
   body.innerHTML = '';
   quote.items.forEach((item, idx)=>{
     const tr = document.createElement('tr');
+    tr.className = 'item-row';
     tr.innerHTML = `
-      <td><input type="text" value="${escapeAttr(item.desc)}" oninput="quote.items[${idx}].desc=this.value"></td>
+      <td>
+        <input type="text" value="${escapeAttr(item.desc)}" oninput="quote.items[${idx}].desc=this.value">
+        <button type="button" class="row-photo-btn no-print" style="margin-top:4px;" onclick="toggleItemDetails(${idx})">${item.details ? 'Edit details' : '+ Add details'}</button>
+      </td>
       <td style="width:70px"><input type="number" value="${item.qty}" min="0" step="1" oninput="quote.items[${idx}].qty=parseFloat(this.value)||0;recalc()"></td>
       <td style="width:110px"><input type="number" value="${item.price}" min="0" step="0.01" oninput="quote.items[${idx}].price=parseFloat(this.value)||0;recalc()"></td>
       <td class="num">${fmt((item.qty||0)*(item.price||0))}</td>
       <td class="no-print"><button class="icon-btn" onclick="removeItemRow(${idx})">✕</button></td>
     `;
     body.appendChild(tr);
+
+    const detailsTr = document.createElement('tr');
+    detailsTr.id = 'itemDetailsRow-' + idx;
+    detailsTr.style.display = item.details ? 'table-row' : 'none';
+    detailsTr.innerHTML = `
+      <td colspan="5" style="padding-top:0;">
+        <textarea rows="2" style="font-size:12px;" placeholder="Longer description for this line item — write it yourself or paste one from an AI tool. Shown on the customer quote under the item." oninput="quote.items[${idx}].details=this.value">${escapeHtml(item.details||'')}</textarea>
+      </td>
+    `;
+    body.appendChild(detailsTr);
   });
+}
+
+function toggleItemDetails(idx){
+  const row = document.getElementById('itemDetailsRow-' + idx);
+  row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
 
 function renderMaterials(){
@@ -851,7 +870,7 @@ function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&
 function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
 
 // ---------- Actions ----------
-function addItemRow(){ quote.items.push({desc:'',qty:1,price:0}); renderItems(); recalc(); }
+function addItemRow(){ quote.items.push({desc:'',qty:1,price:0,details:''}); renderItems(); recalc(); }
 function removeItemRow(idx){ quote.items.splice(idx,1); renderItems(); recalc(); }
 function addMaterialRow(){ quote.internal.materialsList.push({item:'',cost:0,supplier:'',notes:''}); renderMaterials(); }
 function removeMaterialRow(idx){ quote.internal.materialsList.splice(idx,1); renderMaterials(); }
@@ -948,7 +967,7 @@ function recalc(){
   document.getElementById('out_markup').textContent = markup.toFixed(1)+'%';
 
   // re-render totals column of items table without losing focus each keystroke: just update the num cells
-  const rows = document.querySelectorAll('#itemsBody tr');
+  const rows = document.querySelectorAll('#itemsBody tr.item-row');
   rows.forEach((tr, idx)=>{
     const item = quote.items[idx];
     if(item){ tr.children[3].textContent = fmt((item.qty||0)*(item.price||0)); }
@@ -1107,7 +1126,10 @@ function quoteSummaryLines(){
     '',
     quote.comments,
     '',
-    ...quote.items.map(it=>`- ${it.desc}  x${it.qty}  ${fmt(it.price)}  = ${fmt((it.qty||0)*(it.price||0))}`),
+    ...quote.items.flatMap(it=>[
+      `- ${it.desc}  x${it.qty}  ${fmt(it.price)}  = ${fmt((it.qty||0)*(it.price||0))}`,
+      ...(it.details ? [`  ${it.details}`] : [])
+    ]),
     '',
     ...(discountAmt > 0 ? [
       `Subtotal: ${fmt(subtotal)}`,
@@ -1210,13 +1232,21 @@ function buildQuotePdf(){
   doc.setFont(undefined,'normal');
   quote.items.forEach(it=>{
     const descLines = doc.splitTextToSize(it.desc || '', 90);
+    const detailLines = it.details ? doc.splitTextToSize(it.details, 165) : [];
     const rowH = Math.max(descLines.length*4.5, 5);
-    pageBreak(rowH + 2);
+    pageBreak(rowH + (detailLines.length ? detailLines.length*3.8 + 1.5 : 0) + 2);
     doc.text(descLines, marginX, y);
     doc.text(String(it.qty||0), marginX+100, y, {align:'right'});
     doc.text(fmt(it.price), marginX+135, y, {align:'right'});
     doc.text(fmt((it.qty||0)*(it.price||0)), marginX+180, y, {align:'right'});
-    y += rowH + 2;
+    y += rowH;
+    if(detailLines.length){
+      doc.setFontSize(8); doc.setTextColor(110);
+      doc.text(detailLines, marginX + 4, y + 1.5);
+      doc.setFontSize(9); doc.setTextColor(0);
+      y += detailLines.length*3.8 + 1.5;
+    }
+    y += 2;
   });
   doc.line(marginX, y, marginX+180, y);
   y += 6;

@@ -35,16 +35,34 @@ customer quote, with no pricing on it:
 - Job details (customer name, address, mobile, job description) — read live
   from the Customer Quote tab, nothing to re-type
 - Site/reference photos with captions
-- An estimate intake form for the Treasure to fill in: hours or days needed,
-  a rate, and a materials-needed list (item / qty / notes)
+- An estimate intake form for the Treasure to fill in: hours or days needed
+  (no rate — pay is worked out individually, not by formula) and a
+  materials-needed list with item / qty / estimated cost / notes, plus a
+  reminder that materials are bought by the Treasure and reimbursed against
+  receipts
 - **Download Treasure Brief PDF** — job info + photos + estimate fields
   (blank ruled lines if not filled in, so it works as a paper hand-off too)
 - **Send My Estimate to Office** — same one-tap share/PDF flow as the
   customer send, but addressed to your own business email instead, carrying
   the Treasure's time and materials estimate back to you
-- **Apply Estimate to Internal Margins** — one click turns hours×rate into
-  the Internal tab's labour cost and copies the materials list across, so
-  you can see the margin the moment a number comes back
+- **Apply Estimate to Internal Margins** — copies the hours/days estimate
+  into the Internal tab's notes as a reference for setting pay, and copies
+  the materials list (with their estimated costs) across, summed straight
+  into the Materials Cost field
+- **Get Link for Treasure** — generates a URL a Treasure can open on their
+  own phone to fill in the estimate themselves, without ever seeing the
+  customer quote. The link carries only job details (reference, date,
+  customer name/address/mobile, job description) — never line items,
+  discount, deposit, terms, or the internal margin fields, so there's
+  nothing for their device to receive in the first place, not just
+  something hidden by CSS. Opening it drops into a stripped-down
+  single-page view: no tabs, no admin controls, just Job Details, Photos,
+  and Their Estimate. When they hit "Send My Estimate to Office," the
+  message includes a reply link — opening that back on the device that has
+  the matching quote saved (matched by reference) imports their estimate
+  straight into it and jumps to the Treasure tab, no re-typing. If that
+  quote isn't on the device that opens the reply link, it shows the
+  received data in an alert instead of silently failing.
 
 ### Internal Margins & Notes tab
 Never printed and not included when you email the quote. Use it to work out

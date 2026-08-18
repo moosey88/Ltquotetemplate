@@ -298,20 +298,20 @@
 </head>
 <body>
 
-<header class="appbar">
-  <h1>Quote &amp; Estimate Builder</h1>
+<header class="appbar" id="appbar">
+  <h1 id="appTitle">Quote &amp; Estimate Builder</h1>
   <select id="loadSelect" class="no-print" title="Load a saved quote"></select>
-  <button class="no-print" onclick="newQuote()">New</button>
-  <button class="no-print" onclick="saveQuote()">Save</button>
-  <button class="no-print" onclick="deleteCurrentQuote()">Delete</button>
-  <button class="no-print" onclick="openSettings()">Settings</button>
-  <button class="no-print" onclick="window.print()">Print</button>
-  <button class="no-print" onclick="downloadQuotePdf()">Download PDF</button>
-  <button class="no-print" onclick="sendToCustomer()">Send to Customer</button>
+  <button class="no-print" id="btnNew" onclick="newQuote()">New</button>
+  <button class="no-print" id="btnSave" onclick="saveQuote()">Save</button>
+  <button class="no-print" id="btnDelete" onclick="deleteCurrentQuote()">Delete</button>
+  <button class="no-print" id="btnSettings" onclick="openSettings()">Settings</button>
+  <button class="no-print" id="btnPrint" onclick="window.print()">Print</button>
+  <button class="no-print" id="btnDownloadQuotePdf" onclick="downloadQuotePdf()">Download PDF</button>
+  <button class="no-print" id="btnSendToCustomer" onclick="sendToCustomer()">Send to Customer</button>
 </header>
 
 <main>
-  <div class="tabs no-print">
+  <div class="tabs no-print" id="tabBar">
     <button id="tabBtnQuote" class="active" onclick="showTab('quote')">Customer Quote</button>
     <button id="tabBtnTreasure" onclick="showTab('treasure')">🧰 Treasure Brief</button>
     <button id="tabBtnInternal" onclick="showTab('internal')">🔒 Internal Margins &amp; Notes</button>
@@ -497,10 +497,25 @@
       </div>
     </div>
 
+    <div class="card no-print" id="getTreasureLinkCard">
+      <h2>Send to a Treasure</h2>
+      <small class="hint">Generates a link to just this page — job details and the estimate form only. No pricing, line items, or margins are included in it.</small>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button type="button" class="btn secondary" onclick="generateTreasureLink()">Get Link for Treasure</button>
+      </div>
+      <div id="treasureLinkResult" style="display:none; margin-top:10px;">
+        <input type="text" id="treasureLinkOutput" readonly style="font-size:12px;" onclick="this.select()">
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button type="button" class="btn small secondary" onclick="copyTreasureLink()">Copy Link</button>
+          <button type="button" class="btn small" onclick="shareTreasureLink()">Share Link</button>
+        </div>
+      </div>
+    </div>
+
     <div class="no-print" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
       <button class="btn secondary" onclick="downloadTreasureBriefPdf()">Download Treasure Brief PDF</button>
-      <button class="btn secondary" onclick="applyEstimateToInternal()">Apply Estimate to Internal Margins</button>
-      <button class="btn" onclick="sendTreasureEstimate()">Send My Estimate to Office</button>
+      <button class="btn secondary" id="btnApplyEstimateInternal" onclick="applyEstimateToInternal()">Apply Estimate to Internal Margins</button>
+      <button class="btn" id="btnSendTreasureEstimate" onclick="sendTreasureEstimate()">Send My Estimate to Office</button>
     </div>
   </div>
 
@@ -612,6 +627,104 @@ const STARTER_DESCRIPTIONS = {
   'Waste Removal': 'Collection and removal of [items/waste — describe] from the property. Please have items ready and accessible on the day.',
   'Companionship / Pet Care': 'Regular visit covering [describe — e.g. company, dog walking, feeding], on a [schedule — describe] basis. Any specific routines or instructions to be confirmed with the customer.'
 };
+
+// ---------- Treasure link mode ----------
+// A "?treasure=" link carries only job details (ref/date/customer/comments) —
+// deliberately never items, discount, deposit, terms, or internal margins —
+// so a Treasure opening it in their own browser has no pricing to see because
+// it was never sent to their device in the first place, not just hidden by CSS.
+let isTreasureLinkMode = false;
+let treasureLinkOfficeEmail = '';
+
+function buildAppUrl(){
+  return location.origin + location.pathname;
+}
+
+function generateTreasureLink(){
+  recalc();
+  const payload = {
+    v: 1,
+    ref: quote.ref,
+    date: quote.date,
+    validUntil: quote.validUntil,
+    customerName: quote.customer.name,
+    customerAddress: quote.customer.address,
+    customerMobile: quote.customer.mobile,
+    comments: quote.comments,
+    officeEmail: settings.email || ''
+  };
+  const params = new URLSearchParams();
+  params.set('treasure', JSON.stringify(payload));
+  const url = buildAppUrl() + '?' + params.toString();
+  document.getElementById('treasureLinkOutput').value = url;
+  document.getElementById('treasureLinkResult').style.display = 'block';
+  return url;
+}
+
+function copyTreasureLink(){
+  const input = document.getElementById('treasureLinkOutput');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(()=>{
+    alert('Link copied.');
+  }).catch(()=>{
+    alert('Could not copy automatically — the link is selected, copy it manually.');
+  });
+}
+
+async function shareTreasureLink(){
+  const url = document.getElementById('treasureLinkOutput').value || generateTreasureLink();
+  if(navigator.share){
+    try{ await navigator.share({ title:`Job details for ${quote.ref}`, url }); return; }
+    catch(err){ if(err && err.name === 'AbortError') return; }
+  }
+  copyTreasureLink();
+}
+
+function enterTreasureLinkMode(payload){
+  isTreasureLinkMode = true;
+  treasureLinkOfficeEmail = payload.officeEmail || '';
+  quote = blankQuote();
+  quote.ref = payload.ref || quote.ref;
+  quote.date = payload.date || quote.date;
+  quote.validUntil = payload.validUntil || quote.validUntil;
+  quote.customer.name = payload.customerName || '';
+  quote.customer.address = payload.customerAddress || '';
+  quote.customer.mobile = payload.customerMobile || '';
+  quote.comments = payload.comments || '';
+
+  document.getElementById('appTitle').textContent = 'Job Estimate';
+  ['loadSelect','btnNew','btnSave','btnDelete','btnSettings','btnPrint','btnDownloadQuotePdf','btnSendToCustomer']
+    .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
+  document.getElementById('tabBar').style.display = 'none';
+  document.getElementById('getTreasureLinkCard').style.display = 'none';
+  document.getElementById('btnApplyEstimateInternal').style.display = 'none';
+}
+
+function handleTreasureReplyImport(payload){
+  const all = loadAllQuotes();
+  const match = Object.values(all).find(q=>q.ref === payload.ref);
+  if(!match){
+    alert(`Couldn't find a saved quote with reference ${payload.ref} on this device — the estimate came back but there's nothing local to attach it to. Details:\n\nTreasure: ${payload.treasureName || '(not given)'}\nTime: ${payload.value} ${payload.unit}\nMaterials: ${(payload.materials||[]).filter(m=>m.item).map(m=>`${m.item}${m.cost ? ' £'+Number(m.cost).toFixed(2) : ''}`).join(', ') || '(none)'}\nNotes: ${payload.notes || '(none)'}`);
+    return;
+  }
+  match.treasure = {
+    name: payload.treasureName || '',
+    unit: payload.unit || 'hours',
+    value: payload.value || 0,
+    materials: (payload.materials && payload.materials.length) ? payload.materials : [{item:'',qty:'',cost:0,notes:''}],
+    notes: payload.notes || ''
+  };
+  if(!match.internal.materialsList) match.internal.materialsList = [];
+  if(!match.discount) match.discount = { type:'percent', value:0, reason:'' };
+  all[match.id] = match;
+  persistAllQuotes(all);
+  quote = match;
+  refreshLoadSelect();
+  document.getElementById('loadSelect').value = match.id;
+  renderQuoteToForm();
+  showTab('treasure');
+  alert(`Imported the Treasure's estimate into Quote ${match.ref}.`);
+}
 
 const defaultSettings = {
   companyName:'Local Treasures',
@@ -1542,6 +1655,16 @@ async function sendTreasureEstimate(){
     '',
     t.notes ? `Notes: ${t.notes}` : ''
   ];
+
+  let replyToEmail = settings.email || '';
+  if(isTreasureLinkMode){
+    const replyPayload = { v:1, ref:quote.ref, treasureName:t.name, unit:t.unit, value:t.value, materials:t.materials, notes:t.notes };
+    const replyParams = new URLSearchParams();
+    replyParams.set('treasureReply', JSON.stringify(replyPayload));
+    const replyUrl = buildAppUrl() + '?' + replyParams.toString();
+    lines.push('', `Open this link to load it straight into the quote: ${replyUrl}`);
+    replyToEmail = treasureLinkOfficeEmail;
+  }
   const bodyText = lines.join('\n');
 
   const doc = buildTreasureBriefPdf();
@@ -1568,7 +1691,7 @@ async function sendTreasureEstimate(){
 
   const subject = encodeURIComponent(`Estimate for ${quote.ref}${quote.customer.name ? ' — '+quote.customer.name : ''}`);
   const body = encodeURIComponent(bodyText);
-  const to = encodeURIComponent(settings.email || '');
+  const to = encodeURIComponent(replyToEmail);
   alert('Your browser can\'t attach files directly — the PDF has been downloaded. Attach it to the email that\'s about to open.');
   window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
 }
@@ -1609,19 +1732,47 @@ async function sendToCustomer(){
   window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
 }
 
+function loadQuoteFromStorageOrBlank(){
+  const current = localStorage.getItem(LS_CURRENT);
+  if(current){
+    const q = JSON.parse(current);
+    if(!q.internal.materialsList) q.internal.materialsList = [];
+    if(!q.discount) q.discount = { type:'percent', value:0, reason:'' };
+    if(!q.treasure) q.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+    return q;
+  }
+  return blankQuote();
+}
+
 // ---------- Init ----------
 (function init(){
   refreshLoadSelect();
-  const current = localStorage.getItem(LS_CURRENT);
-  if(current){
-    quote = JSON.parse(current);
-    if(!quote.internal.materialsList) quote.internal.materialsList = [];
-    if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+
+  const params = new URLSearchParams(location.search);
+  const treasureParam = params.get('treasure');
+  const replyParam = params.get('treasureReply');
+
+  if(treasureParam){
+    try{
+      enterTreasureLinkMode(JSON.parse(treasureParam));
+    }catch(e){
+      quote = blankQuote();
+    }
+    history.replaceState(null, '', location.pathname);
+  } else if(replyParam){
+    quote = loadQuoteFromStorageOrBlank();
+    history.replaceState(null, '', location.pathname);
+    try{
+      handleTreasureReplyImport(JSON.parse(replyParam));
+    }catch(e){
+      alert('That reply link could not be read — it may be incomplete or corrupted.');
+    }
   } else {
-    quote = blankQuote();
+    quote = loadQuoteFromStorageOrBlank();
   }
+
   renderQuoteToForm();
+  if(isTreasureLinkMode) showTab('treasure');
 
   // Self-heal: a previously-stored logo (shipped default or user-uploaded) might
   // predate the EXIF-stripping fix and silently fail only when building a PDF,

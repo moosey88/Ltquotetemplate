@@ -565,7 +565,11 @@
   <div class="modal">
     <h2>Settings (defaults for new quotes)</h2>
     <div class="field"><label>Company Name</label><input type="text" id="s_companyName"></div>
-    <div class="field"><label>Logo (image)</label><input type="file" id="s_logoFile" accept="image/*" onchange="handleLogoUpload(this.files[0])"></div>
+    <div class="field">
+      <label>Logo (image)</label>
+      <input type="file" id="s_logoFile" accept="image/*" onchange="handleLogoUpload(this.files[0])">
+      <button type="button" class="btn small secondary" style="margin-top:6px" onclick="resetLogoToDefault()">Reset to default Local Treasures logo</button>
+    </div>
     <div class="field"><label>Prepared By (default)</label><input type="text" id="s_preparedBy"></div>
     <div class="grid">
       <div class="field"><label>Phone</label><input type="text" id="s_phone"></div>
@@ -1034,24 +1038,38 @@ function openSettings(){
 }
 function closeSettings(){ document.getElementById('settingsModal').classList.remove('show'); }
 
-function handleLogoUpload(file){
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e=>{
-    // Redraw through a canvas: strips EXIF/XMP metadata that trips up jsPDF's PNG
-    // parser (renders fine on screen but fails silently when building the PDF),
-    // and caps size so a phone photo doesn't bloat every generated PDF.
+// Redraws an image data URI through a canvas: strips EXIF/XMP metadata that
+// trips up jsPDF's PNG parser (renders fine on screen but fails silently
+// when building the PDF), and caps width so large source images don't bloat
+// every generated PDF. Safe to run on an already-clean image.
+function sanitizeLogoDataUri(dataUri, maxW){
+  return new Promise((resolve, reject)=>{
     const img = new Image();
     img.onload = () => {
-      const maxW = 300;
       const scale = Math.min(1, maxW / img.naturalWidth);
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.naturalWidth * scale);
       canvas.height = Math.round(img.naturalHeight * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      settings.logo = canvas.toDataURL('image/png');
+      resolve(canvas.toDataURL('image/png'));
     };
-    img.src = e.target.result;
+    img.onerror = reject;
+    img.src = dataUri;
+  });
+}
+
+function resetLogoToDefault(){
+  settings.logo = defaultSettings.logo;
+  persistSettings();
+  renderBrandHeader();
+  alert('Logo reset to the default Local Treasures logo.');
+}
+
+function handleLogoUpload(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    sanitizeLogoDataUri(e.target.result, 700).then(clean=>{ settings.logo = clean; });
   };
   reader.readAsDataURL(file);
 }
@@ -1510,6 +1528,20 @@ async function sendToCustomer(){
     quote = blankQuote();
   }
   renderQuoteToForm();
+
+  // Self-heal: a previously-stored logo (shipped default or user-uploaded) might
+  // predate the EXIF-stripping fix and silently fail only when building a PDF,
+  // not on screen. Re-sanitize on every load so this can't recur no matter how
+  // the stale value got into storage.
+  if(settings.logo){
+    sanitizeLogoDataUri(settings.logo, 700).then(clean=>{
+      if(clean !== settings.logo){
+        settings.logo = clean;
+        persistSettings();
+        renderBrandHeader();
+      }
+    }).catch(()=>{ /* leave logo as-is if it can't be decoded at all */ });
+  }
 })();
 </script>
 </body>

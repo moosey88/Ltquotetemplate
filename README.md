@@ -56,10 +56,21 @@ whether the price actually makes sense:
 ## Settings
 
 Click **Settings** to set your company name, logo, contact details, bank
-details, and the defaults that get pre-filled on every new quote (deposit %,
-fee %, quote validity in days, default terms, default project comments). The
-Local Treasures logo is pulled in as the default (`assets/logo.png`) — swap
-it for your own via the logo upload in Settings if needed.
+details, a link to your full Terms & Conditions, and the defaults that get
+pre-filled on every new quote (deposit %, fee %, quote validity in days,
+default terms, default project comments).
+
+Defaults are pre-filled to match the Local Treasures template: the logo
+(`assets/logo.png`), phone (0333 577 1188), website, bank account and sort
+code, and the T&Cs link. `preparedBy` and `email` are deliberately left
+blank — those are personal to whoever's sending the quote, so fill in your
+own rather than a shared default.
+
+Uploading your own logo redraws it through a canvas before storing it, which
+strips EXIF/XMP metadata (common in phone photos) that otherwise makes the
+PDF library reject the image, and scales it down to keep generated PDFs a
+sane size — the logo shows correctly on screen and in Print either way, but
+without this step it would silently fail to appear in the exported PDF.
 
 ## Saving & sending
 

@@ -579,6 +579,9 @@
       <div class="field"><label>Account Number</label><input type="text" id="s_bankAccount"></div>
       <div class="field"><label>Sort Code</label><input type="text" id="s_sortCode"></div>
       <div class="field"><label>Full Terms &amp; Conditions URL</label><input type="text" id="s_fullTermsUrl"></div>
+    </div>
+    <button type="button" class="btn small secondary" onclick="resetBankDetailsToDefault()">Reset bank &amp; contact details to Local Treasures defaults</button>
+    <div class="grid" style="margin-top:14px;">
       <div class="field"><label>Default Deposit %</label><input type="number" id="s_depositPct"></div>
       <div class="field"><label>Default Fee %</label><input type="number" id="s_feePct" step="0.1"></div>
       <div class="field"><label>Quote Valid For (days)</label><input type="number" id="s_validDays"></div>
@@ -1084,6 +1087,17 @@ function resetLogoToDefault(){
   alert('Logo reset to the default Local Treasures logo.');
 }
 
+function resetBankDetailsToDefault(){
+  ['companyName','phone','website','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+    settings[key] = defaultSettings[key];
+  });
+  persistSettings();
+  renderFooter();
+  renderBrandHeader();
+  openSettings(); // refresh the open modal's fields to show the reset values
+  alert('Bank and contact details reset to the Local Treasures defaults.');
+}
+
 function handleLogoUpload(file){
   if(!file) return;
   const reader = new FileReader();
@@ -1571,6 +1585,24 @@ async function sendToCustomer(){
         renderBrandHeader();
       }
     }).catch(()=>{ /* leave logo as-is if it can't be decoded at all */ });
+  }
+
+  // Backfill: settings saved before a field existed (or before its default
+  // value was set) have it blank forever, since a stored value — even an
+  // empty string — always wins over a new default. Fill in anything still
+  // blank from the shipped defaults; never overwrites something you've
+  // actually typed in.
+  let backfilled = false;
+  ['companyName','phone','website','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+    if(!settings[key] && defaultSettings[key]){
+      settings[key] = defaultSettings[key];
+      backfilled = true;
+    }
+  });
+  if(backfilled){
+    persistSettings();
+    renderFooter();
+    renderBrandHeader();
   }
 })();
 </script>

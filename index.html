@@ -650,6 +650,7 @@
       <div class="field"><label>Phone</label><input type="text" id="s_phone"></div>
       <div class="field"><label>Email</label><input type="text" id="s_email"></div>
       <div class="field"><label>Website</label><input type="text" id="s_website"></div>
+      <div class="field"><label>Service Area (for job research links)</label><input type="text" id="s_serviceArea"></div>
       <div class="field"><label>Bank Account Name</label><input type="text" id="s_bankName"></div>
       <div class="field"><label>Account Number</label><input type="text" id="s_bankAccount"></div>
       <div class="field"><label>Sort Code</label><input type="text" id="s_sortCode"></div>
@@ -798,6 +799,7 @@ const defaultSettings = {
   phone:'0333 577 1188',
   email:'',
   website:'www.localtreasures.me',
+  serviceArea:'Farnham, Surrey',
   bankName:'Local Treasures Ltd',
   bankAccount:'08975159',
   sortCode:'04-00-75',
@@ -866,6 +868,19 @@ function deleteJobBankEntry(id){
   renderJobBank();
 }
 
+// No backend means no way to safely hold an API key in the page, so this
+// can't scan and hand back a number itself — instead it opens a search
+// pre-filled with the job name, service area, and the trade sites already
+// used for pricing research, so it's one click from the job card rather
+// than a trip out to chat.
+function researchJobBank(id){
+  const entry = jobBank.find(e=>e.id===id);
+  const name = (entry && entry.name) ? entry.name : 'job';
+  const area = settings.serviceArea || '';
+  const q = `${name} cost ${area} (site:checkatrade.com OR site:mybuilder.com OR site:myjobquote.co.uk)`;
+  window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank');
+}
+
 function lowerJobBankPrice(entry, pct){
   entry.currentPrice = Math.max(0, Math.round(entry.currentPrice * (1-pct) * 100) / 100);
 }
@@ -916,6 +931,10 @@ function renderJobBank(){
           <input type="text" id="jb_name_${entry.id}" value="${escapeAttr(entry.name)}" placeholder="Job name (e.g. Mount TV on wall)" style="font-weight:600; flex:1;" oninput="updateJobBankField('${entry.id}','name',this.value)">
           <span class="badge ${entry.status}">${entry.status==='active' ? 'Active' : 'Researching'}</span>
           <button type="button" class="icon-btn no-print" onclick="deleteJobBankEntry('${entry.id}')">✕</button>
+        </div>
+        <div class="no-print" style="margin-top:8px;">
+          <button type="button" class="btn small secondary" onclick="researchJobBank('${entry.id}')">🔎 Research going rate</button>
+          <small class="hint" style="margin-left:6px;">Opens a search for "${escapeAttr(entry.name || 'this job')}" near ${escapeAttr(settings.serviceArea || 'your area')} across Checkatrade, MyBuilder &amp; MyJobQuote — skim the results, then type the price range and notes in below.</small>
         </div>
         <div class="grid cols-3" style="margin-top:10px;">
           <div class="field"><label>Category</label><input type="text" value="${escapeAttr(entry.category)}" oninput="updateJobBankField('${entry.id}','category',this.value)"></div>
@@ -1436,6 +1455,7 @@ function openSettings(){
   document.getElementById('s_phone').value = settings.phone;
   document.getElementById('s_email').value = settings.email;
   document.getElementById('s_website').value = settings.website;
+  document.getElementById('s_serviceArea').value = settings.serviceArea;
   document.getElementById('s_bankName').value = settings.bankName;
   document.getElementById('s_bankAccount').value = settings.bankAccount;
   document.getElementById('s_sortCode').value = settings.sortCode;
@@ -1477,7 +1497,7 @@ function resetLogoToDefault(){
 }
 
 function resetBankDetailsToDefault(){
-  ['companyName','phone','website','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     settings[key] = defaultSettings[key];
   });
   persistSettings();
@@ -1502,6 +1522,7 @@ function saveSettings(){
   settings.phone = document.getElementById('s_phone').value;
   settings.email = document.getElementById('s_email').value;
   settings.website = document.getElementById('s_website').value;
+  settings.serviceArea = document.getElementById('s_serviceArea').value;
   settings.bankName = document.getElementById('s_bankName').value;
   settings.bankAccount = document.getElementById('s_bankAccount').value;
   settings.sortCode = document.getElementById('s_sortCode').value;
@@ -2041,7 +2062,7 @@ function loadQuoteFromStorageOrBlank(){
   // blank from the shipped defaults; never overwrites something you've
   // actually typed in.
   let backfilled = false;
-  ['companyName','phone','website','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     if(!settings[key] && defaultSettings[key]){
       settings[key] = defaultSettings[key];
       backfilled = true;

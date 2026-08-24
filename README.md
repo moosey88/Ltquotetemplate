@@ -38,10 +38,16 @@ quote and PDF, and live on the Treasure Brief tab instead.
 ### 📚 Job Bank tab
 A running library of "what should this job cost" answers, so you only have
 to work it out once per job type:
-- **+ New Job Request** — log a job you're not sure how to price. Ask
-  (Claude, in chat) for the going rate — it checks your own pricing history
-  first, then outside sources like Checkatrade/MyBuilder for anything not
-  already covered — and paste what it finds into the entry's Research Notes
+- **+ New Job Request** — log a job you're not sure how to price, then hit
+  **🔎 Research going rate** on that card. It opens a search (pre-filled
+  with the job name and your Service Area from Settings) across
+  Checkatrade, MyBuilder, and MyJobQuote in one tab — skim the results and
+  type what you find straight into Price Range / Current Price / Research
+  Notes. This stays a one-click search rather than an automatic scan
+  because a fully static app has nowhere safe to keep an API key — see
+  "Data & privacy" below. You can still ask Claude in chat for a deeper
+  look (it also checks your own pricing history in Drive first) and paste
+  that in instead, whichever's faster for a given job
 - Price Range (Low/High) from that research, plus a single **Current Price**
   — the one you'll actually quote
 - **Status**: Researching (still working out the number) or Active (ready to
@@ -104,9 +110,10 @@ whether the price actually makes sense:
 ## Settings
 
 Click **Settings** to set your company name, logo, contact details, bank
-details, a link to your full Terms & Conditions, and the defaults that get
-pre-filled on every new quote (deposit %, fee %, quote validity in days,
-default terms, default project comments).
+details, a link to your full Terms & Conditions, a Service Area (used to
+localise the Job Bank's "Research going rate" search links, e.g. "Farnham,
+Surrey"), and the defaults that get pre-filled on every new quote (deposit
+%, fee %, quote validity in days, default terms, default project comments).
 
 Defaults are pre-filled to match the Local Treasures template: the logo
 (`assets/logo.png`), phone (0333 577 1188), website, bank account and sort

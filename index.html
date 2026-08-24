@@ -239,6 +239,26 @@
     margin-bottom:14px;
     text-align:center;
   }
+  .badge{
+    display:inline-block;
+    padding:2px 9px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    white-space:nowrap;
+  }
+  .badge.researching{ background:#fff4d6; color:#6b4a00; }
+  .badge.active{ background:#e8f2ee; color:var(--brand-dark); }
+  .jobbank-history{
+    margin-top:10px;
+    font-size:12px;
+    color:var(--muted);
+    border-top:1px solid var(--line);
+    padding-top:8px;
+  }
+  .jobbank-history div{ margin-bottom:3px; }
   .calc-out{
     display:grid;
     grid-template-columns:1fr auto;
@@ -313,6 +333,7 @@
 <main>
   <div class="tabs no-print" id="tabBar">
     <button id="tabBtnQuote" class="active" onclick="showTab('quote')">Customer Quote</button>
+    <button id="tabBtnJobBank" onclick="showTab('jobbank')">📚 Job Bank</button>
     <button id="tabBtnTreasure" onclick="showTab('treasure')">🧰 Treasure Brief</button>
     <button id="tabBtnInternal" onclick="showTab('internal')">🔒 Internal Margins &amp; Notes</button>
   </div>
@@ -387,6 +408,13 @@
         <tbody id="itemsBody"></tbody>
       </table>
       <button class="btn small no-print" style="margin-top:8px" onclick="addItemRow()">+ Add line item</button>
+      <button class="btn small secondary no-print" style="margin-top:8px" onclick="toggleJobBankPicker()">+ Add from Job Bank</button>
+      <div id="jobBankPicker" style="display:none; margin-top:8px;" class="no-print">
+        <select id="jobBankPickerSelect" style="width:auto;">
+          <option value="">Choose a priced job…</option>
+        </select>
+        <button type="button" class="btn small" onclick="addItemFromJobBank()">Add</button>
+      </div>
 
       <div class="field no-print" style="margin-top:14px;">
         <label>Discount</label>
@@ -427,6 +455,16 @@
         </div>
         <div>Deposit required: <strong id="depositAmt">£0.00</strong></div>
         <div class="grand">Total: <span id="grandTotal">£0.00</span></div>
+      </div>
+
+      <div class="no-print" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <label style="margin:0;">Outcome</label>
+        <select id="q_outcome" style="width:auto;" onchange="saveQuoteOutcome()">
+          <option value="pending">Pending</option>
+          <option value="won">Won</option>
+          <option value="lost">Lost</option>
+        </select>
+        <small class="hint" style="margin:0;">Setting Won/Lost updates the price history of any items added from the Job Bank.</small>
       </div>
     </div>
 
@@ -517,6 +555,30 @@
       <button class="btn secondary" id="btnApplyEstimateInternal" onclick="applyEstimateToInternal()">Apply Estimate to Internal Margins</button>
       <button class="btn" id="btnSendTreasureEstimate" onclick="sendTreasureEstimate()">Send My Estimate to Office</button>
     </div>
+  </div>
+
+  <!-- ===================== JOB BANK TAB ===================== -->
+  <div id="panel-jobbank" class="tab-panel">
+    <div class="card">
+      <h2>Job Bank</h2>
+      <small class="hint">
+        Not sure what to charge? Add a request here, then ask Claude in chat for the
+        going rate — it'll check your own pricing history plus outside sources like
+        Checkatrade — and come back and fill in what it finds. Pick a price and use
+        it on a quote. Mark the quote Won and it's confirmed for next time; mark it
+        Lost and you'll get a quick way to lower the price and try again.
+      </small>
+      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+        <button type="button" class="btn no-print" onclick="addJobBankEntry()">+ New Job Request</button>
+        <select id="jobBankFilter" style="width:auto;" onchange="renderJobBank()">
+          <option value="all">All jobs</option>
+          <option value="researching">Researching</option>
+          <option value="active">Active (priced)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jobBankList"></div>
   </div>
 
   <!-- ===================== INTERNAL TAB ===================== -->
@@ -613,6 +675,9 @@
 const LS_QUOTES = 'quoteapp_quotes_v1';
 const LS_SETTINGS = 'quoteapp_settings_v1';
 const LS_CURRENT = 'quoteapp_current_v1';
+const LS_JOBBANK = 'quoteapp_jobbank_v1';
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
 
 // Starter text for the per-item "details" field — a foundation to edit, not a
 // finished description. Covers the common Local Treasures service categories.
@@ -759,6 +824,180 @@ function loadAllQuotes(){
 }
 function persistAllQuotes(all){ localStorage.setItem(LS_QUOTES, JSON.stringify(all)); }
 
+// ---------- Job Bank ----------
+let jobBank = [];
+
+function loadJobBank(){
+  const raw = localStorage.getItem(LS_JOBBANK);
+  return raw ? JSON.parse(raw) : [];
+}
+function persistJobBank(){ localStorage.setItem(LS_JOBBANK, JSON.stringify(jobBank)); }
+
+function addJobBankEntry(){
+  const entry = {
+    id: 'jb_' + Date.now(),
+    name: '',
+    category: '',
+    status: 'researching',
+    priceLow: 0,
+    priceHigh: 0,
+    currentPrice: 0,
+    researchNotes: '',
+    history: [ { date: todayStr(), price: 0, outcome: 'created' } ]
+  };
+  jobBank.unshift(entry);
+  persistJobBank();
+  document.getElementById('jobBankFilter').value = 'all';
+  renderJobBank();
+  setTimeout(()=>{ const el = document.getElementById('jb_name_' + entry.id); if(el) el.focus(); }, 50);
+}
+
+function updateJobBankField(id, field, value){
+  const entry = jobBank.find(e=>e.id===id);
+  if(!entry) return;
+  entry[field] = value;
+  persistJobBank();
+}
+
+function deleteJobBankEntry(id){
+  if(!confirm('Delete this job from the bank? This cannot be undone.')) return;
+  jobBank = jobBank.filter(e=>e.id!==id);
+  persistJobBank();
+  renderJobBank();
+}
+
+function lowerJobBankPrice(entry, pct){
+  entry.currentPrice = Math.max(0, Math.round(entry.currentPrice * (1-pct) * 100) / 100);
+}
+
+function logJobBankWin(id){
+  const entry = jobBank.find(e=>e.id===id);
+  if(!entry) return;
+  entry.history.push({ date: todayStr(), price: entry.currentPrice, outcome: 'won' });
+  entry.status = 'active';
+  persistJobBank();
+  renderJobBank();
+}
+
+function logJobBankLoss(id){
+  const entry = jobBank.find(e=>e.id===id);
+  if(!entry) return;
+  entry.history.push({ date: todayStr(), price: entry.currentPrice, outcome: 'lost' });
+  const suggestion = Math.max(0, Math.round(entry.currentPrice * 0.9 * 100) / 100);
+  const input = prompt(`Logged as lost at £${entry.currentPrice.toFixed(2)}. Enter a new lower price to try next time (suggested £${suggestion.toFixed(2)}), or Cancel to leave it as-is:`, suggestion);
+  if(input !== null){
+    const newPrice = parseFloat(input);
+    if(!isNaN(newPrice) && newPrice >= 0) entry.currentPrice = newPrice;
+  }
+  persistJobBank();
+  renderJobBank();
+}
+
+function renderJobBank(){
+  const filterEl = document.getElementById('jobBankFilter');
+  const filter = filterEl ? filterEl.value : 'all';
+  const list = document.getElementById('jobBankList');
+  if(!list) return;
+  const filtered = jobBank.filter(e => filter==='all' || e.status===filter);
+  if(!filtered.length){
+    list.innerHTML = '<div class="card"><small class="hint">No jobs here yet — click "+ New Job Request" to add one.</small></div>';
+    return;
+  }
+  list.innerHTML = filtered.map(entry=>{
+    const wins = entry.history.filter(h=>h.outcome==='won').length;
+    const losses = entry.history.filter(h=>h.outcome==='lost').length;
+    const historyHtml = entry.history.slice().reverse().slice(0,6).map(h=>{
+      const label = h.outcome==='won' ? '✅ Won' : h.outcome==='lost' ? '❌ Lost' : '➕ Logged';
+      return `<div>${label} at ${fmt(h.price)} — ${escapeHtml(h.date)}</div>`;
+    }).join('');
+    return `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <input type="text" id="jb_name_${entry.id}" value="${escapeAttr(entry.name)}" placeholder="Job name (e.g. Mount TV on wall)" style="font-weight:600; flex:1;" oninput="updateJobBankField('${entry.id}','name',this.value)">
+          <span class="badge ${entry.status}">${entry.status==='active' ? 'Active' : 'Researching'}</span>
+          <button type="button" class="icon-btn no-print" onclick="deleteJobBankEntry('${entry.id}')">✕</button>
+        </div>
+        <div class="grid cols-3" style="margin-top:10px;">
+          <div class="field"><label>Category</label><input type="text" value="${escapeAttr(entry.category)}" oninput="updateJobBankField('${entry.id}','category',this.value)"></div>
+          <div class="field">
+            <label>Status</label>
+            <select onchange="updateJobBankField('${entry.id}','status',this.value); renderJobBank();">
+              <option value="researching" ${entry.status==='researching'?'selected':''}>Researching</option>
+              <option value="active" ${entry.status==='active'?'selected':''}>Active</option>
+            </select>
+          </div>
+          <div class="field"><label>Record</label><input type="text" value="${wins} won, ${losses} lost" readonly></div>
+        </div>
+        <div class="grid cols-3">
+          <div class="field"><label>Price Range Low (£)</label><input type="number" min="0" step="0.01" value="${entry.priceLow||0}" oninput="updateJobBankField('${entry.id}','priceLow',parseFloat(this.value)||0)"></div>
+          <div class="field"><label>Price Range High (£)</label><input type="number" min="0" step="0.01" value="${entry.priceHigh||0}" oninput="updateJobBankField('${entry.id}','priceHigh',parseFloat(this.value)||0)"></div>
+          <div class="field"><label>Current Price (£)</label><input type="number" min="0" step="0.01" value="${entry.currentPrice||0}" oninput="updateJobBankField('${entry.id}','currentPrice',parseFloat(this.value)||0)"></div>
+        </div>
+        <div class="field">
+          <label>Research Notes</label>
+          <textarea rows="3" placeholder="Paste what Claude finds — going rate, sources, reasoning" oninput="updateJobBankField('${entry.id}','researchNotes',this.value)">${escapeHtml(entry.researchNotes||'')}</textarea>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;" class="no-print">
+          <button type="button" class="btn small secondary" onclick="logJobBankWin('${entry.id}')">Log Win</button>
+          <button type="button" class="btn small danger" onclick="logJobBankLoss('${entry.id}')">Log Loss (lower price)</button>
+        </div>
+        ${historyHtml ? `<div class="jobbank-history">${historyHtml}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleJobBankPicker(){
+  const el = document.getElementById('jobBankPicker');
+  const showing = el.style.display !== 'none';
+  if(!showing){
+    const select = document.getElementById('jobBankPickerSelect');
+    const activeJobs = jobBank.filter(e=>e.status==='active');
+    select.innerHTML = '<option value="">Choose a priced job…</option>' +
+      activeJobs.map(e=>`<option value="${e.id}">${escapeHtml(e.name || '(untitled)')} — ${fmt(e.currentPrice||0)}</option>`).join('');
+  }
+  el.style.display = showing ? 'none' : 'block';
+}
+
+function addItemFromJobBank(){
+  const id = document.getElementById('jobBankPickerSelect').value;
+  if(!id) return;
+  const entry = jobBank.find(e=>e.id===id);
+  if(!entry) return;
+  quote.items.push({ desc: entry.name, qty:1, price: entry.currentPrice||0, details:'', jobBankId: entry.id });
+  renderItems();
+  recalc();
+  document.getElementById('jobBankPicker').style.display = 'none';
+}
+
+function saveQuoteOutcome(){
+  recalc();
+  const outcome = document.getElementById('q_outcome').value;
+  quote.outcome = outcome;
+  const linkedItems = quote.items.filter(it=>it.jobBankId);
+
+  if(outcome !== 'pending' && linkedItems.length){
+    linkedItems.forEach(it=>{
+      const entry = jobBank.find(e=>e.id===it.jobBankId);
+      if(!entry) return;
+      entry.history.push({ date: todayStr(), price: it.price, outcome });
+      if(outcome === 'won') entry.status = 'active';
+    });
+    persistJobBank();
+
+    if(outcome === 'lost' && confirm(`Marked as Lost. Lower the price for ${linkedItems.length} linked Job Bank ${linkedItems.length===1?'item':'items'} by 10% and try again next time?`)){
+      linkedItems.forEach(it=>{
+        const entry = jobBank.find(e=>e.id===it.jobBankId);
+        if(entry) lowerJobBankPrice(entry, 0.1);
+      });
+      persistJobBank();
+    }
+    alert(`Outcome saved and the Job Bank updated for ${linkedItems.length} linked item(s).`);
+  }
+
+  localStorage.setItem(LS_CURRENT, JSON.stringify(quote));
+}
+
 function blankQuote(){
   const today = new Date();
   const valid = new Date(today.getTime() + settings.validDays*86400000);
@@ -790,7 +1029,8 @@ function blankQuote(){
       value: 0,
       materials: [ {item:'', qty:'', cost:0, notes:''} ],
       notes: ''
-    }
+    },
+    outcome: 'pending'
   };
 }
 
@@ -843,6 +1083,7 @@ function renderQuoteToForm(){
   document.getElementById('q_comments').value = quote.comments;
   document.getElementById('q_terms').value = quote.terms;
   document.getElementById('q_depositPct').value = quote.depositPct;
+  document.getElementById('q_outcome').value = quote.outcome || 'pending';
 
   document.getElementById('q_discountType').value = quote.discount.type;
   document.getElementById('q_discountValue').value = quote.discount.value;
@@ -1177,12 +1418,15 @@ function newQuote(){
 // ---------- Tabs ----------
 function showTab(name){
   document.getElementById('panel-quote').classList.toggle('active', name==='quote');
+  document.getElementById('panel-jobbank').classList.toggle('active', name==='jobbank');
   document.getElementById('panel-treasure').classList.toggle('active', name==='treasure');
   document.getElementById('panel-internal').classList.toggle('active', name==='internal');
   document.getElementById('tabBtnQuote').classList.toggle('active', name==='quote');
+  document.getElementById('tabBtnJobBank').classList.toggle('active', name==='jobbank');
   document.getElementById('tabBtnTreasure').classList.toggle('active', name==='treasure');
   document.getElementById('tabBtnInternal').classList.toggle('active', name==='internal');
   if(name === 'treasure') renderTreasureJobInfo();
+  if(name === 'jobbank') renderJobBank();
 }
 
 // ---------- Settings ----------
@@ -1739,6 +1983,7 @@ function loadQuoteFromStorageOrBlank(){
     if(!q.internal.materialsList) q.internal.materialsList = [];
     if(!q.discount) q.discount = { type:'percent', value:0, reason:'' };
     if(!q.treasure) q.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+    if(!q.outcome) q.outcome = 'pending';
     return q;
   }
   return blankQuote();
@@ -1747,6 +1992,8 @@ function loadQuoteFromStorageOrBlank(){
 // ---------- Init ----------
 (function init(){
   refreshLoadSelect();
+  jobBank = loadJobBank();
+  renderJobBank();
 
   const params = new URLSearchParams(location.search);
   const treasureParam = params.get('treasure');

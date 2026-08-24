@@ -23,11 +23,36 @@ GitHub Pages: Settings → Pages → deploy from the `main` branch / root).
 - Discount — quick 5/10/15% buttons, or a custom % or £ amount with a reason,
   applied to the subtotal before deposit/total
 - Deposit % and total, calculated live
+- **"+ Add from Job Bank"** — pulls a line item straight from the Job Bank
+  (see below) instead of typing it from scratch, and tags it so a later
+  Won/Lost outcome feeds back into that job's pricing history
+- **Outcome** (Pending / Won / Lost) — set once you know how the quote went.
+  Won or Lost updates the price history of any items that came from the Job
+  Bank; Lost also offers to drop their price 10% for next time
 - Terms & conditions text
 - Footer with your contact and bank details (from Settings)
 
 No site photos here — they're deliberately left off the customer-facing
 quote and PDF, and live on the Treasure Brief tab instead.
+
+### 📚 Job Bank tab
+A running library of "what should this job cost" answers, so you only have
+to work it out once per job type:
+- **+ New Job Request** — log a job you're not sure how to price. Ask
+  (Claude, in chat) for the going rate — it checks your own pricing history
+  first, then outside sources like Checkatrade/MyBuilder for anything not
+  already covered — and paste what it finds into the entry's Research Notes
+- Price Range (Low/High) from that research, plus a single **Current Price**
+  — the one you'll actually quote
+- **Status**: Researching (still working out the number) or Active (ready to
+  use on quotes) — the "+ Add from Job Bank" picker on the Customer Quote
+  tab only offers Active jobs
+- **Log Win** / **Log Loss** — records the outcome at the current price.
+  Log Loss prompts for a new, lower price to try next time (pre-filled with
+  a 10% cut, edit to whatever you want) — the same result also happens
+  automatically if you mark a quote's Outcome as Lost when it used this job
+- A short history per job (win/loss record and the last few price points)
+  so you can see how a job's price has moved over time
 
 ### 🧰 Treasure Brief tab
 For whoever's actually doing the job — a separate document from the

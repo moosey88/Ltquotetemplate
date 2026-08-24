@@ -259,6 +259,10 @@
     padding-top:8px;
   }
   .jobbank-history div{ margin-bottom:3px; }
+  .badge.location{ background:#eef1fb; color:#3a3f7a; }
+  .jobbank-table-wrap{ overflow-x:auto; margin-top:10px; }
+  table.jobbank-table{ min-width:720px; }
+  table.jobbank-table td.detail-cell{ background:var(--panel-alt,#fafafa); }
   .calc-out{
     display:grid;
     grid-template-columns:1fr auto;
@@ -562,11 +566,13 @@
     <div class="card">
       <h2>Job Bank</h2>
       <small class="hint">
-        Not sure what to charge? Add a request here, then ask Claude in chat for the
-        going rate — it'll check your own pricing history plus outside sources like
-        Checkatrade — and come back and fill in what it finds. Pick a price and use
-        it on a quote. Mark the quote Won and it's confirmed for next time; mark it
-        Lost and you'll get a quick way to lower the price and try again.
+        Not sure what to charge? Add a request here, hit 🔎 Research going rate to
+        pull up going rates for that job and area, and fill in what you find. Cost
+        can vary by town — Woking, Guildford and Farnham don't always go for the
+        same price — so log a separate entry per location where it matters. Pick a
+        price and use it on a quote. Mark the quote Won and it's confirmed for next
+        time; mark it Lost and you'll get a quick way to lower the price and try
+        again.
       </small>
       <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center;">
         <button type="button" class="btn no-print" onclick="addJobBankEntry()">+ New Job Request</button>
@@ -575,10 +581,14 @@
           <option value="researching">Researching</option>
           <option value="active">Active (priced)</option>
         </select>
+        <select id="jobBankLocationFilter" style="width:auto;" onchange="renderJobBank()">
+          <option value="all">All locations</option>
+        </select>
       </div>
     </div>
 
     <div id="jobBankList"></div>
+    <datalist id="jobBankLocations"></datalist>
   </div>
 
   <!-- ===================== INTERNAL TAB ===================== -->
@@ -651,6 +661,7 @@
       <div class="field"><label>Email</label><input type="text" id="s_email"></div>
       <div class="field"><label>Website</label><input type="text" id="s_website"></div>
       <div class="field"><label>Service Area (for job research links)</label><input type="text" id="s_serviceArea"></div>
+      <div class="field"><label>Areas You Serve (comma-separated, for Job Bank pricing by location)</label><input type="text" id="s_serviceAreas"></div>
       <div class="field"><label>Bank Account Name</label><input type="text" id="s_bankName"></div>
       <div class="field"><label>Account Number</label><input type="text" id="s_bankAccount"></div>
       <div class="field"><label>Sort Code</label><input type="text" id="s_sortCode"></div>
@@ -800,6 +811,7 @@ const defaultSettings = {
   email:'',
   website:'www.localtreasures.me',
   serviceArea:'Farnham, Surrey',
+  serviceAreas:'Farnham, Guildford, Woking, Aldershot, Camberley, Fleet, Alton',
   bankName:'Local Treasures Ltd',
   bankAccount:'08975159',
   sortCode:'04-00-75',
@@ -828,10 +840,22 @@ function persistAllQuotes(all){ localStorage.setItem(LS_QUOTES, JSON.stringify(a
 
 // ---------- Job Bank ----------
 let jobBank = [];
+let jobBankExpanded = new Set(); // ids currently showing the full edit form; not persisted
 
 function loadJobBank(){
   const raw = localStorage.getItem(LS_JOBBANK);
-  return raw ? JSON.parse(raw) : [];
+  const jobs = raw ? JSON.parse(raw) : [];
+  // Entries saved before location/time/materials/treasure-cost fields existed
+  // won't have them — default so the table and edit form never see undefined.
+  jobs.forEach(e=>{
+    if(e.location === undefined) e.location = '';
+    if(e.timeLow === undefined) e.timeLow = 0;
+    if(e.timeHigh === undefined) e.timeHigh = 0;
+    if(e.materialsCost === undefined) e.materialsCost = 0;
+    if(e.treasureCostLow === undefined) e.treasureCostLow = 0;
+    if(e.treasureCostHigh === undefined) e.treasureCostHigh = 0;
+  });
+  return jobs;
 }
 function persistJobBank(){ localStorage.setItem(LS_JOBBANK, JSON.stringify(jobBank)); }
 
@@ -840,10 +864,16 @@ function addJobBankEntry(){
     id: 'jb_' + Date.now(),
     name: '',
     category: '',
+    location: '',
     status: 'researching',
     priceLow: 0,
     priceHigh: 0,
     currentPrice: 0,
+    timeLow: 0,
+    timeHigh: 0,
+    materialsCost: 0,
+    treasureCostLow: 0,
+    treasureCostHigh: 0,
     researchNotes: '',
     history: [ { date: todayStr(), price: 0, outcome: 'created' } ]
   };
@@ -876,7 +906,7 @@ function deleteJobBankEntry(id){
 function researchJobBank(id){
   const entry = jobBank.find(e=>e.id===id);
   const name = (entry && entry.name) ? entry.name : 'job';
-  const area = settings.serviceArea || '';
+  const area = (entry && entry.location) ? entry.location : (settings.serviceArea || '');
   const q = `${name} cost ${area} (site:checkatrade.com OR site:mybuilder.com OR site:myjobquote.co.uk)`;
   window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank');
 }
@@ -911,59 +941,176 @@ function logJobBankLoss(id){
 function renderJobBank(){
   const filterEl = document.getElementById('jobBankFilter');
   const filter = filterEl ? filterEl.value : 'all';
+  const locFilterEl = document.getElementById('jobBankLocationFilter');
+  const locFilter = locFilterEl ? locFilterEl.value : 'all';
+
+  // Keep the location filter's options and the location datalist in sync
+  // with whatever's actually in use, plus anything set up in Settings.
+  const usedLocations = Array.from(new Set(jobBank.map(e=>e.location).filter(Boolean)));
+  const settingsLocations = (settings.serviceAreas || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const allLocations = Array.from(new Set([...settingsLocations, ...usedLocations])).sort();
+  const datalist = document.getElementById('jobBankLocations');
+  if(datalist) datalist.innerHTML = allLocations.map(l=>`<option value="${escapeAttr(l)}">`).join('');
+  if(locFilterEl){
+    const prevValue = locFilterEl.value;
+    locFilterEl.innerHTML = '<option value="all">All locations</option>' +
+      allLocations.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('');
+    locFilterEl.value = allLocations.includes(prevValue) ? prevValue : 'all';
+  }
+
   const list = document.getElementById('jobBankList');
   if(!list) return;
-  const filtered = jobBank.filter(e => filter==='all' || e.status===filter);
+  const filtered = jobBank.filter(e =>
+    (filter==='all' || e.status===filter) &&
+    (locFilter==='all' || e.location===locFilter)
+  );
   if(!filtered.length){
     list.innerHTML = '<div class="card"><small class="hint">No jobs here yet — click "+ New Job Request" to add one.</small></div>';
     return;
   }
-  list.innerHTML = filtered.map(entry=>{
+
+  const rangeStr = (low, high, prefix) => {
+    const l = Number(low)||0, h = Number(high)||0;
+    if(!l && !h) return '—';
+    if(l === h) return `${prefix}${l}`;
+    return `${prefix}${l}–${prefix}${h}`;
+  };
+
+  const rows = filtered.map(entry=>{
+    const expanded = jobBankExpanded.has(entry.id);
     const wins = entry.history.filter(h=>h.outcome==='won').length;
     const losses = entry.history.filter(h=>h.outcome==='lost').length;
     const historyHtml = entry.history.slice().reverse().slice(0,6).map(h=>{
       const label = h.outcome==='won' ? '✅ Won' : h.outcome==='lost' ? '❌ Lost' : '➕ Logged';
       return `<div>${label} at ${fmt(h.price)} — ${escapeHtml(h.date)}</div>`;
     }).join('');
-    return `
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-          <input type="text" id="jb_name_${entry.id}" value="${escapeAttr(entry.name)}" placeholder="Job name (e.g. Mount TV on wall)" style="font-weight:600; flex:1;" oninput="updateJobBankField('${entry.id}','name',this.value)">
-          <span class="badge ${entry.status}">${entry.status==='active' ? 'Active' : 'Researching'}</span>
-          <button type="button" class="icon-btn no-print" onclick="deleteJobBankEntry('${entry.id}')">✕</button>
-        </div>
-        <div class="no-print" style="margin-top:8px;">
-          <button type="button" class="btn small secondary" onclick="researchJobBank('${entry.id}')">🔎 Research going rate</button>
-          <small class="hint" style="margin-left:6px;">Opens a search for "${escapeAttr(entry.name || 'this job')}" near ${escapeAttr(settings.serviceArea || 'your area')} across Checkatrade, MyBuilder &amp; MyJobQuote — skim the results, then type the price range and notes in below.</small>
-        </div>
-        <div class="grid cols-3" style="margin-top:10px;">
-          <div class="field"><label>Category</label><input type="text" value="${escapeAttr(entry.category)}" oninput="updateJobBankField('${entry.id}','category',this.value)"></div>
-          <div class="field">
-            <label>Status</label>
-            <select onchange="updateJobBankField('${entry.id}','status',this.value); renderJobBank();">
-              <option value="researching" ${entry.status==='researching'?'selected':''}>Researching</option>
-              <option value="active" ${entry.status==='active'?'selected':''}>Active</option>
-            </select>
+
+    const summaryRow = `
+      <tr class="jb-row">
+        <td style="min-width:180px;">
+          <button type="button" class="icon-btn no-print" onclick="toggleJobBankExpand('${entry.id}')" title="${expanded?'Collapse':'Expand to edit'}">${expanded?'▾':'▸'}</button>
+          <strong>${escapeHtml(entry.name || '(untitled)')}</strong>
+          <div style="margin-top:2px;">
+            <span class="badge ${entry.status}">${entry.status==='active' ? 'Active' : 'Researching'}</span>
+            ${entry.location ? `<span class="badge location">${escapeHtml(entry.location)}</span>` : ''}
           </div>
-          <div class="field"><label>Record</label><input type="text" value="${wins} won, ${losses} lost" readonly></div>
-        </div>
-        <div class="grid cols-3">
-          <div class="field"><label>Price Range Low (£)</label><input type="number" min="0" step="0.01" value="${entry.priceLow||0}" oninput="updateJobBankField('${entry.id}','priceLow',parseFloat(this.value)||0)"></div>
-          <div class="field"><label>Price Range High (£)</label><input type="number" min="0" step="0.01" value="${entry.priceHigh||0}" oninput="updateJobBankField('${entry.id}','priceHigh',parseFloat(this.value)||0)"></div>
-          <div class="field"><label>Current Price (£)</label><input type="number" min="0" step="0.01" value="${entry.currentPrice||0}" oninput="updateJobBankField('${entry.id}','currentPrice',parseFloat(this.value)||0)"></div>
-        </div>
-        <div class="field">
-          <label>Research Notes</label>
-          <textarea rows="3" placeholder="Paste what Claude finds — going rate, sources, reasoning" oninput="updateJobBankField('${entry.id}','researchNotes',this.value)">${escapeHtml(entry.researchNotes||'')}</textarea>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;" class="no-print">
-          <button type="button" class="btn small secondary" onclick="logJobBankWin('${entry.id}')">Log Win</button>
-          <button type="button" class="btn small danger" onclick="logJobBankLoss('${entry.id}')">Log Loss (lower price)</button>
-        </div>
-        ${historyHtml ? `<div class="jobbank-history">${historyHtml}</div>` : ''}
-      </div>
-    `;
+        </td>
+        <td class="num">${rangeStr(entry.priceLow, entry.priceHigh, '£')}<br><small class="hint">now: ${fmt(entry.currentPrice||0)}</small></td>
+        <td class="num">${rangeStr(entry.timeLow, entry.timeHigh, '')}${(entry.timeLow||entry.timeHigh) ? 'h' : ''}</td>
+        <td class="num">${entry.materialsCost ? fmt(entry.materialsCost) : '—'}</td>
+        <td class="num">${rangeStr(entry.treasureCostLow, entry.treasureCostHigh, '£')}</td>
+        <td class="no-print" style="white-space:nowrap;">
+          <button type="button" class="btn small" onclick="useJobBankEntry('${entry.id}')">+ Use</button>
+          <button type="button" class="icon-btn" onclick="deleteJobBankEntry('${entry.id}')">✕</button>
+        </td>
+      </tr>`;
+
+    if(!expanded) return summaryRow;
+
+    const detailRow = `
+      <tr class="no-print">
+        <td colspan="6" class="detail-cell">
+          <div class="field"><label>Job Name</label><input type="text" id="jb_name_${entry.id}" value="${escapeAttr(entry.name)}" placeholder="Job name (e.g. Mount TV on wall)" oninput="updateJobBankField('${entry.id}','name',this.value)"></div>
+          <div class="grid cols-3">
+            <div class="field"><label>Category</label><input type="text" value="${escapeAttr(entry.category)}" oninput="updateJobBankField('${entry.id}','category',this.value)"></div>
+            <div class="field"><label>Location</label><input type="text" list="jobBankLocations" value="${escapeAttr(entry.location)}" placeholder="e.g. Guildford" oninput="updateJobBankField('${entry.id}','location',this.value)"></div>
+            <div class="field">
+              <label>Status</label>
+              <select onchange="updateJobBankField('${entry.id}','status',this.value); renderJobBank();">
+                <option value="researching" ${entry.status==='researching'?'selected':''}>Researching</option>
+                <option value="active" ${entry.status==='active'?'selected':''}>Active</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid cols-3">
+            <div class="field"><label>Price Range Low (£)</label><input type="number" min="0" step="0.01" value="${entry.priceLow||0}" oninput="updateJobBankField('${entry.id}','priceLow',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Price Range High (£)</label><input type="number" min="0" step="0.01" value="${entry.priceHigh||0}" oninput="updateJobBankField('${entry.id}','priceHigh',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Current Price (£)</label><input type="number" min="0" step="0.01" value="${entry.currentPrice||0}" oninput="updateJobBankField('${entry.id}','currentPrice',parseFloat(this.value)||0)"></div>
+          </div>
+          <div class="grid cols-3">
+            <div class="field"><label>Time Taken Low (hrs)</label><input type="number" min="0" step="0.5" value="${entry.timeLow||0}" oninput="updateJobBankField('${entry.id}','timeLow',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Time Taken High (hrs)</label><input type="number" min="0" step="0.5" value="${entry.timeHigh||0}" oninput="updateJobBankField('${entry.id}','timeHigh',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Est. Materials Cost (£)</label><input type="number" min="0" step="0.01" value="${entry.materialsCost||0}" oninput="updateJobBankField('${entry.id}','materialsCost',parseFloat(this.value)||0)"></div>
+          </div>
+          <div class="grid cols-3">
+            <div class="field"><label>Treasure Cost Budget Low (£)</label><input type="number" min="0" step="0.01" value="${entry.treasureCostLow||0}" oninput="updateJobBankField('${entry.id}','treasureCostLow',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Treasure Cost Budget High (£)</label><input type="number" min="0" step="0.01" value="${entry.treasureCostHigh||0}" oninput="updateJobBankField('${entry.id}','treasureCostHigh',parseFloat(this.value)||0)"></div>
+            <div class="field"><label>Record</label><input type="text" value="${wins} won, ${losses} lost" readonly></div>
+          </div>
+          <small class="hint">Treasure Cost Budget is what you're willing to pay for the labour — internal only, never shown to the Treasure or the customer. Keep it below the price range so there's room to pay a slower Treasure more without touching what the customer's quoted.</small>
+          <div class="field" style="margin-top:8px;">
+            <label>Research Notes</label>
+            <textarea rows="3" placeholder="Paste what Claude finds — going rate, sources, reasoning" oninput="updateJobBankField('${entry.id}','researchNotes',this.value)">${escapeHtml(entry.researchNotes||'')}</textarea>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <button type="button" class="btn small secondary" onclick="researchJobBank('${entry.id}')">🔎 Research going rate</button>
+            <button type="button" class="btn small secondary" onclick="logJobBankWin('${entry.id}')">Log Win</button>
+            <button type="button" class="btn small danger" onclick="logJobBankLoss('${entry.id}')">Log Loss (lower price)</button>
+          </div>
+          ${historyHtml ? `<div class="jobbank-history">${historyHtml}</div>` : ''}
+        </td>
+      </tr>`;
+
+    return summaryRow + detailRow;
   }).join('');
+
+  list.innerHTML = `
+    <div class="jobbank-table-wrap">
+      <table class="items jobbank-table">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th class="num">Price Low–High</th>
+            <th class="num">Time Low–High</th>
+            <th class="num">Materials</th>
+            <th class="num">Treasure Cost Low–High</th>
+            <th class="no-print">Actions</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function toggleJobBankExpand(id){
+  if(jobBankExpanded.has(id)) jobBankExpanded.delete(id);
+  else jobBankExpanded.add(id);
+  renderJobBank();
+  if(jobBankExpanded.has(id)){
+    setTimeout(()=>{ const el = document.getElementById('jb_name_' + id); if(el) el.focus(); }, 50);
+  }
+}
+
+// Speed path from the Job Bank table straight onto the current quote: adds
+// the line item at the job's Current Price, and — only where those fields
+// are still blank, so it never overwrites a real Treasure estimate — seeds
+// the hours and a materials line from the job's own numbers, plus an
+// internal note with the pay budget range. Customer price (from the price
+// range/Current Price) and Treasure pay (from the budget range) are tracked
+// separately on purpose: the customer's price doesn't move if a particular
+// Treasure takes longer, as long as the pay stays inside the budget band.
+function useJobBankEntry(id){
+  const entry = jobBank.find(e=>e.id===id);
+  if(!entry) return;
+  quote.items.push({ desc: entry.name, qty:1, price: entry.currentPrice||0, details:'', jobBankId: entry.id });
+
+  if((entry.timeLow || entry.timeHigh) && !quote.treasure.value){
+    quote.treasure.unit = 'hours';
+    quote.treasure.value = Math.round(((Number(entry.timeLow)||0) + (Number(entry.timeHigh)||0)) / 2 * 2) / 2;
+  }
+  if(entry.materialsCost){
+    quote.treasure.materials.push({ item: entry.name ? `${entry.name} materials` : 'Materials', qty:'', cost: entry.materialsCost, notes:'From Job Bank estimate' });
+  }
+  if(entry.treasureCostLow || entry.treasureCostHigh){
+    const budgetNote = `Job Bank pay budget for ${entry.name || 'this item'}: £${entry.treasureCostLow||0}–£${entry.treasureCostHigh||0} (customer price ${fmt(entry.currentPrice||0)}) — room to move on Treasure pay within this band without changing the customer price.`;
+    if(!quote.internal.notes.includes(budgetNote)){
+      quote.internal.notes = quote.internal.notes ? quote.internal.notes + '\n' + budgetNote : budgetNote;
+    }
+  }
+
+  renderQuoteToForm();
+  recalc();
+  showTab('quote');
 }
 
 function toggleJobBankPicker(){
@@ -1456,6 +1603,7 @@ function openSettings(){
   document.getElementById('s_email').value = settings.email;
   document.getElementById('s_website').value = settings.website;
   document.getElementById('s_serviceArea').value = settings.serviceArea;
+  document.getElementById('s_serviceAreas').value = settings.serviceAreas;
   document.getElementById('s_bankName').value = settings.bankName;
   document.getElementById('s_bankAccount').value = settings.bankAccount;
   document.getElementById('s_sortCode').value = settings.sortCode;
@@ -1497,7 +1645,7 @@ function resetLogoToDefault(){
 }
 
 function resetBankDetailsToDefault(){
-  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','serviceAreas','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     settings[key] = defaultSettings[key];
   });
   persistSettings();
@@ -1523,6 +1671,7 @@ function saveSettings(){
   settings.email = document.getElementById('s_email').value;
   settings.website = document.getElementById('s_website').value;
   settings.serviceArea = document.getElementById('s_serviceArea').value;
+  settings.serviceAreas = document.getElementById('s_serviceAreas').value;
   settings.bankName = document.getElementById('s_bankName').value;
   settings.bankAccount = document.getElementById('s_bankAccount').value;
   settings.sortCode = document.getElementById('s_sortCode').value;
@@ -2062,7 +2211,7 @@ function loadQuoteFromStorageOrBlank(){
   // blank from the shipped defaults; never overwrites something you've
   // actually typed in.
   let backfilled = false;
-  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','serviceAreas','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     if(!settings[key] && defaultSettings[key]){
       settings[key] = defaultSettings[key];
       backfilled = true;

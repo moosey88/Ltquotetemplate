@@ -37,26 +37,48 @@ quote and PDF, and live on the Treasure Brief tab instead.
 
 ### 📚 Job Bank tab
 A running library of "what should this job cost" answers, so you only have
-to work it out once per job type:
-- **+ New Job Request** — log a job you're not sure how to price, then hit
-  **🔎 Research going rate** on that card. It opens a search (pre-filled
-  with the job name and your Service Area from Settings) across
-  Checkatrade, MyBuilder, and MyJobQuote in one tab — skim the results and
-  type what you find straight into Price Range / Current Price / Research
-  Notes. This stays a one-click search rather than an automatic scan
-  because a fully static app has nowhere safe to keep an API key — see
-  "Data & privacy" below. You can still ask Claude in chat for a deeper
-  look (it also checks your own pricing history in Drive first) and paste
-  that in instead, whichever's faster for a given job
-- Price Range (Low/High) from that research, plus a single **Current Price**
-  — the one you'll actually quote
-- **Status**: Researching (still working out the number) or Active (ready to
-  use on quotes) — the "+ Add from Job Bank" picker on the Customer Quote
-  tab only offers Active jobs
-- **Log Win** / **Log Loss** — records the outcome at the current price.
-  Log Loss prompts for a new, lower price to try next time (pre-filled with
-  a 10% cut, edit to whatever you want) — the same result also happens
-  automatically if you mark a quote's Outcome as Lost when it used this job
+to work it out once per job type, shown as a table you can scan and act on
+fast:
+- **+ New Job Request** — adds a row and opens it for editing. Fill in the
+  job name, and hit **🔎 Research going rate** to open a search (pre-filled
+  with the job name and the job's Location, or your Service Area from
+  Settings if no location's set) across Checkatrade, MyBuilder, and
+  MyJobQuote in one tab — skim the results and type what you find into
+  Price Range / Current Price / Research Notes. This stays a one-click
+  search rather than an automatic scan because a fully static app has
+  nowhere safe to keep an API key — see "Data & privacy" below. You can
+  still ask Claude in chat for a deeper look (it also checks your own
+  pricing history in Drive first) and paste that in instead
+- **Location** — cost isn't the same everywhere in the territory (Woking,
+  Guildford, and Farnham don't always go for the same rate), so a job type
+  can have more than one entry, one per location. The location filter
+  above the table and the Location field's autocomplete both pull from
+  Settings → Areas You Serve, plus whatever locations are already in use
+- The table shows, per job: **Price Low–High** (with the Current Price
+  underneath — the one you'll actually quote), **Time Low–High** (hours the
+  job typically takes), **Materials** (a typical estimated cost), and
+  **Treasure Cost Low–High** — an internal-only pay budget, separate from
+  the customer price, so you can see at a glance how much room there is to
+  pay a slower Treasure more without the customer's price changing. None of
+  this — including the Treasure Cost budget — is ever sent to a Treasure;
+  see the Treasure Link section below for why that's structural, not just
+  hidden
+- **+ Use** on a row adds it straight to the current quote at the Current
+  Price, and — only where those fields are still blank, so a real Treasure
+  estimate never gets overwritten — seeds the Treasure's hours (midpoint of
+  the time range), a materials line at the estimated cost, and an Internal
+  note stating the pay budget range, then jumps you to the Customer Quote
+  tab. This is the fast path: research once, then add to quote in one click
+  from then on
+- Click the ▸ next to a job name to expand it for editing — category,
+  location, status, price/time/materials/budget fields, research notes,
+  and (once it's been quoted) **Log Win** / **Log Loss**. **Status**:
+  Researching (still working out the number) or Active (ready to use on
+  quotes) — the "+ Add from Job Bank" picker on the Customer Quote tab only
+  offers Active jobs. **Log Loss** prompts for a new, lower price to try
+  next time (pre-filled with a 10% cut, edit to whatever you want) — the
+  same result also happens automatically if you mark a quote's Outcome as
+  Lost when it used this job
 - A short history per job (win/loss record and the last few price points)
   so you can see how a job's price has moved over time
 
@@ -112,8 +134,11 @@ whether the price actually makes sense:
 Click **Settings** to set your company name, logo, contact details, bank
 details, a link to your full Terms & Conditions, a Service Area (used to
 localise the Job Bank's "Research going rate" search links, e.g. "Farnham,
-Surrey"), and the defaults that get pre-filled on every new quote (deposit
-%, fee %, quote validity in days, default terms, default project comments).
+Surrey"), Areas You Serve (a comma-separated list of towns, e.g. "Farnham,
+Guildford, Woking" — powers the Job Bank's Location field and filter, since
+the same job can cost different amounts in different towns), and the
+defaults that get pre-filled on every new quote (deposit %, fee %, quote
+validity in days, default terms, default project comments).
 
 Defaults are pre-filled to match the Local Treasures template: the logo
 (`assets/logo.png`), phone (0333 577 1188), website, bank account and sort

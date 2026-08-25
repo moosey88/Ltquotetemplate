@@ -251,6 +251,9 @@
   }
   .badge.researching{ background:#fff4d6; color:#6b4a00; }
   .badge.active{ background:#e8f2ee; color:var(--brand-dark); }
+  .badge.below{ background:#fde8e8; color:#8a1f1f; }
+  .badge.above{ background:#e6f0fb; color:#1f4d8a; }
+  .badge.at{ background:#e6f7ea; color:#1f7a3c; }
   .jobbank-history{
     margin-top:10px;
     font-size:12px;
@@ -259,7 +262,6 @@
     padding-top:8px;
   }
   .jobbank-history div{ margin-bottom:3px; }
-  .badge.location{ background:#eef1fb; color:#3a3f7a; }
   .jobbank-table-wrap{ overflow-x:auto; margin-top:10px; }
   table.jobbank-table{ min-width:720px; }
   table.jobbank-table td.detail-cell{ background:var(--panel-alt,#fafafa); }
@@ -567,28 +569,22 @@
       <h2>Job Bank</h2>
       <small class="hint">
         Not sure what to charge? Add a request here, hit 🔎 Research going rate to
-        pull up going rates for that job and area, and fill in what you find. Cost
-        can vary by town — Woking, Guildford and Farnham don't always go for the
-        same price — so log a separate entry per location where it matters. Pick a
-        price and use it on a quote. Mark the quote Won and it's confirmed for next
-        time; mark it Lost and you'll get a quick way to lower the price and try
-        again.
+        pull up going rates for that job, and fill in what you find. Pick a price
+        and use it on a quote. Mark the quote Won and it's confirmed for next time;
+        mark it Lost and you'll get a quick way to lower the price and try again.
       </small>
       <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center;">
         <button type="button" class="btn no-print" onclick="addJobBankEntry()">+ New Job Request</button>
+        <button type="button" class="btn secondary no-print" onclick="seedCommonJobs()">🌱 Load 50 Common Jobs</button>
         <select id="jobBankFilter" style="width:auto;" onchange="renderJobBank()">
           <option value="all">All jobs</option>
           <option value="researching">Researching</option>
           <option value="active">Active (priced)</option>
         </select>
-        <select id="jobBankLocationFilter" style="width:auto;" onchange="renderJobBank()">
-          <option value="all">All locations</option>
-        </select>
       </div>
     </div>
 
     <div id="jobBankList"></div>
-    <datalist id="jobBankLocations"></datalist>
   </div>
 
   <!-- ===================== INTERNAL TAB ===================== -->
@@ -661,7 +657,6 @@
       <div class="field"><label>Email</label><input type="text" id="s_email"></div>
       <div class="field"><label>Website</label><input type="text" id="s_website"></div>
       <div class="field"><label>Service Area (for job research links)</label><input type="text" id="s_serviceArea"></div>
-      <div class="field"><label>Areas You Serve (comma-separated, for Job Bank pricing by location)</label><input type="text" id="s_serviceAreas"></div>
       <div class="field"><label>Bank Account Name</label><input type="text" id="s_bankName"></div>
       <div class="field"><label>Account Number</label><input type="text" id="s_bankAccount"></div>
       <div class="field"><label>Sort Code</label><input type="text" id="s_sortCode"></div>
@@ -811,7 +806,6 @@ const defaultSettings = {
   email:'',
   website:'www.localtreasures.me',
   serviceArea:'Farnham, Surrey',
-  serviceAreas:'Farnham, Guildford, Woking, Aldershot, Camberley, Fleet, Alton',
   bankName:'Local Treasures Ltd',
   bankAccount:'08975159',
   sortCode:'04-00-75',
@@ -848,7 +842,6 @@ function loadJobBank(){
   // Entries saved before location/time/materials/treasure-cost fields existed
   // won't have them — default so the table and edit form never see undefined.
   jobs.forEach(e=>{
-    if(e.location === undefined) e.location = '';
     if(e.timeLow === undefined) e.timeLow = 0;
     if(e.timeHigh === undefined) e.timeHigh = 0;
     if(e.materialsCost === undefined) e.materialsCost = 0;
@@ -864,7 +857,6 @@ function addJobBankEntry(){
     id: 'jb_' + Date.now(),
     name: '',
     category: '',
-    location: '',
     status: 'researching',
     priceLow: 0,
     priceHigh: 0,
@@ -882,6 +874,97 @@ function addJobBankEntry(){
   document.getElementById('jobBankFilter').value = 'all';
   renderJobBank();
   setTimeout(()=>{ const el = document.getElementById('jb_name_' + entry.id); if(el) el.focus(); }, 50);
+}
+
+// 50 of the most common requests, pulled from Local Treasures' own quoting
+// sheet, regular-requests log, and GBP profile pricing (Drive) — the Price
+// Range here is a going-rate benchmark, not what's currently charged. Time
+// Taken and Current Price are deliberately left blank: fill those in
+// yourself per job, and the table's going-rate badge compares what you
+// enter against this range. Categories with no pricing doc in Drive yet
+// (waste removal) are listed with no range — use 🔎 Research to fill it in.
+const STARTER_JOB_BANK = [
+  { name:'Mount TV on wall', category:'Handyman', priceLow:65, priceHigh:120, notes:'From your Quoting Sheet (£65–£85) and GBP profile (£75–£120).' },
+  { name:'Install TV bracket, conceal wires', category:'Handyman', priceLow:100, priceHigh:130, notes:'From your Quoting Sheet.' },
+  { name:'Assemble flat-pack furniture', category:'Handyman', priceLow:50, priceHigh:95, notes:'From your GBP profile (from £50) and Quoting Sheet (£75–£95).' },
+  { name:'Hang shelves / shelving installation', category:'Handyman', priceLow:60, priceHigh:130, notes:'From your Quoting Sheet (£60–£75) and GBP profile (£60–£130).' },
+  { name:'Install shelves in cupboard (fit-out)', category:'Handyman', priceLow:75, priceHigh:90, notes:'From your Quoting Sheet.' },
+  { name:'Hang pictures or mirrors', category:'Handyman', priceLow:30, priceHigh:100, notes:'From your GBP profile, Quoting Sheet and regular-requests log.' },
+  { name:'Fit blinds or curtain poles', category:'Handyman', priceLow:50, priceHigh:85, notes:'From your GBP profile and Quoting Sheet.' },
+  { name:'Fit locks or door handles', category:'Handyman', priceLow:50, priceHigh:80, notes:'From your Quoting Sheet and regular-requests log.' },
+  { name:'Repair or adjust sticking door', category:'Handyman', priceLow:50, priceHigh:150, notes:'From your Quoting Sheet (£50–£65) and GBP profile door repairs (£60–£150).' },
+  { name:'Patch and paint small wall holes', category:'Handyman', priceLow:75, priceHigh:100, notes:'From your Quoting Sheet and regular-requests log.' },
+  { name:'Fix squeaky or uneven floors', category:'Handyman', priceLow:100, priceHigh:140, notes:'From your regular-requests log.' },
+  { name:'Replace broken tile', category:'Handyman', priceLow:90, priceHigh:130, notes:'From your regular-requests log.' },
+  { name:'Secure loose stair rail or bannister', category:'Handyman', priceLow:70, priceHigh:90, notes:'From your Quoting Sheet.' },
+  { name:'Fit house number or doorbell (non-electric)', category:'Handyman', priceLow:50, priceHigh:65, notes:'From your Quoting Sheet.' },
+  { name:'Fit baby gate or stair gate', category:'Handyman', priceLow:60, priceHigh:75, notes:'From your Quoting Sheet.' },
+  { name:'Fix unstick drawer or cupboard hinge', category:'Handyman', priceLow:45, priceHigh:60, notes:'From your Quoting Sheet.' },
+  { name:'Install loft ladder / board loft', category:'Handyman', priceLow:150, priceHigh:220, notes:'From your regular-requests log.' },
+  { name:'Replace light fitting / ceiling light', category:'Electrics', priceLow:70, priceHigh:90, notes:'From your Quoting Sheet and regular-requests log.' },
+  { name:'Replace socket or switch faceplate', category:'Electrics', priceLow:60, priceHigh:100, notes:'From your Quoting Sheet and GBP profile.' },
+  { name:'Additional socket installation', category:'Electrics', priceLow:100, priceHigh:180, notes:'From your GBP profile.' },
+  { name:'Dimmer switch installation', category:'Electrics', priceLow:60, priceHigh:100, notes:'From your GBP profile.' },
+  { name:'Replace bathroom extractor fan', category:'Electrics', priceLow:80, priceHigh:100, notes:'From your Quoting Sheet and regular-requests log.' },
+  { name:'Fit smoke or CO2 alarm', category:'Electrics', priceLow:45, priceHigh:60, notes:'From your regular-requests log.' },
+  { name:'Install ceiling fan', category:'Electrics', priceLow:100, priceHigh:150, notes:'From your regular-requests log.' },
+  { name:'Outdoor / security lighting installation', category:'Electrics', priceLow:100, priceHigh:200, notes:'From your GBP profile.' },
+  { name:'Install smart / wired doorbell', category:'Electrics', priceLow:60, priceHigh:100, notes:'From your GBP profile.' },
+  { name:'Fix leaking tap / re-washer', category:'Plumbing', priceLow:80, priceHigh:150, notes:'From your regular-requests log and GBP profile.' },
+  { name:'Unblock sink, toilet or drain', category:'Plumbing', priceLow:70, priceHigh:120, notes:'From your regular-requests log.' },
+  { name:'Replace toilet seat', category:'Plumbing', priceLow:45, priceHigh:60, notes:'From your regular-requests log and Quoting Sheet.' },
+  { name:'Toilet repair (cistern / flush mechanism)', category:'Plumbing', priceLow:75, priceHigh:160, notes:'From your Quoting Sheet and GBP profile.' },
+  { name:'Install shower head, rail or hose', category:'Plumbing', priceLow:45, priceHigh:85, notes:'From your regular-requests log, Quoting Sheet and GBP profile.' },
+  { name:'Install washing machine or dishwasher', category:'Plumbing', priceLow:70, priceHigh:120, notes:'From your regular-requests log.' },
+  { name:'Reseal or re-grout bathroom', category:'Plumbing', priceLow:70, priceHigh:130, notes:'From your regular-requests log and Quoting Sheet.' },
+  { name:'Radiator bleeding / system balancing', category:'Plumbing', priceLow:60, priceHigh:100, notes:'From your GBP profile.' },
+  { name:'Repair fence or gate', category:'Gardening', priceLow:100, priceHigh:250, notes:'From your regular-requests log and GBP profile.' },
+  { name:'Lawn mowing', category:'Gardening', priceLow:30, priceHigh:120, notes:'From your GBP profile.' },
+  { name:'Hedge cutting / trimming', category:'Gardening', priceLow:60, priceHigh:180, notes:'From your GBP profile.' },
+  { name:'Garden clearance', category:'Gardening', priceLow:150, priceHigh:450, notes:'From your GBP profile.' },
+  { name:'Pressure / jet washing patio or drive', category:'Gardening', priceLow:100, priceHigh:250, notes:'From your regular-requests log and GBP profile.' },
+  { name:'Weed control / bed maintenance', category:'Gardening', priceLow:50, priceHigh:100, notes:'From your GBP profile.' },
+  { name:'Regular garden maintenance visit', category:'Gardening', priceLow:35, priceHigh:65, notes:'From your regular-requests log and GBP profile.' },
+  { name:'Clean or fix gutters', category:'Gardening', priceLow:65, priceHigh:150, notes:'From your regular-requests log, Quoting Sheet and GBP profile.' },
+  { name:'Domestic cleaning (regular visit, ~3hrs)', category:'Cleaning', priceLow:50, priceHigh:70, notes:'From your GBP profile hourly rate (£16–£22.50/hr) at a typical 3hr visit — check against actual visit length.' },
+  { name:'End of tenancy cleaning', category:'Cleaning', priceLow:180, priceHigh:420, notes:'From your GBP profile.' },
+  { name:'Deep cleaning (one-off)', category:'Cleaning', priceLow:180, priceHigh:380, notes:'From your GBP profile.' },
+  { name:'Oven cleaning', category:'Cleaning', priceLow:55, priceHigh:90, notes:'From your GBP profile.' },
+  { name:'Paint and decorate a single room', category:'Decorating', priceLow:400, priceHigh:700, notes:'From a real quote on file (£665 for one room) — varies a lot with size and coats, treat as a rough anchor.' },
+  { name:'Patch, fill and touch-up paintwork', category:'Decorating', priceLow:75, priceHigh:120, notes:'From your regular-requests log (wall-hole patching).' },
+  { name:'Small waste / rubbish removal (van load)', category:'Waste Removal', priceLow:0, priceHigh:0, notes:'No pricing doc found in Drive for this yet — use 🔎 Research to find a going rate before relying on the badge.' },
+  { name:'Garden waste / green waste removal', category:'Waste Removal', priceLow:0, priceHigh:0, notes:'No pricing doc found in Drive for this yet — use 🔎 Research to find a going rate before relying on the badge.' }
+];
+
+function seedCommonJobs(){
+  const existingNames = new Set(jobBank.map(e => (e.name||'').toLowerCase().trim()));
+  const toAdd = STARTER_JOB_BANK.filter(j => !existingNames.has(j.name.toLowerCase().trim()));
+  if(!toAdd.length){
+    alert('All 50 common jobs are already in your Job Bank.');
+    return;
+  }
+  if(!confirm(`Add ${toAdd.length} common job${toAdd.length===1?'':'s'} to the Job Bank? Each comes with a going-rate Price Range from your own pricing docs — you fill in Current Price and Time Taken, and the table tells you if your price is above, at, or below that range.`)) return;
+  toAdd.forEach((j, i)=>{
+    jobBank.push({
+      id: 'jb_' + Date.now() + '_' + i,
+      name: j.name,
+      category: j.category,
+      status: 'researching',
+      priceLow: j.priceLow,
+      priceHigh: j.priceHigh,
+      currentPrice: 0,
+      timeLow: 0,
+      timeHigh: 0,
+      materialsCost: 0,
+      treasureCostLow: 0,
+      treasureCostHigh: 0,
+      researchNotes: j.notes || '',
+      history: [ { date: todayStr(), price: 0, outcome: 'created' } ]
+    });
+  });
+  persistJobBank();
+  renderJobBank();
+  alert(`Added ${toAdd.length} job${toAdd.length===1?'':'s'}. Fill in Current Price and Time Taken on each (▸ to expand) — the price cell will show whether you're above, at, or below the going rate.`);
 }
 
 function updateJobBankField(id, field, value){
@@ -906,7 +989,7 @@ function deleteJobBankEntry(id){
 function researchJobBank(id){
   const entry = jobBank.find(e=>e.id===id);
   const name = (entry && entry.name) ? entry.name : 'job';
-  const area = (entry && entry.location) ? entry.location : (settings.serviceArea || '');
+  const area = settings.serviceArea || '';
   const q = `${name} cost ${area} (site:checkatrade.com OR site:mybuilder.com OR site:myjobquote.co.uk)`;
   window.open('https://www.google.com/search?q=' + encodeURIComponent(q), '_blank');
 }
@@ -938,32 +1021,27 @@ function logJobBankLoss(id){
   renderJobBank();
 }
 
+// Compares what you've actually put as Current Price against the researched
+// Price Range (Low/High) for that job, so the table can flag under/over
+// market at a glance. No benchmark yet, or no price entered yet, both show
+// as neutral rather than guessing.
+function goingRateStatus(entry){
+  const price = Number(entry.currentPrice) || 0;
+  const low = Number(entry.priceLow) || 0, high = Number(entry.priceHigh) || 0;
+  if(!price) return { label:'—', cls:'' };
+  if(!low && !high) return { label:'No benchmark yet', cls:'' };
+  if(price < low) return { label:'Below going rate', cls:'below' };
+  if(price > high) return { label:'Above going rate', cls:'above' };
+  return { label:'At going rate', cls:'at' };
+}
+
 function renderJobBank(){
   const filterEl = document.getElementById('jobBankFilter');
   const filter = filterEl ? filterEl.value : 'all';
-  const locFilterEl = document.getElementById('jobBankLocationFilter');
-  const locFilter = locFilterEl ? locFilterEl.value : 'all';
-
-  // Keep the location filter's options and the location datalist in sync
-  // with whatever's actually in use, plus anything set up in Settings.
-  const usedLocations = Array.from(new Set(jobBank.map(e=>e.location).filter(Boolean)));
-  const settingsLocations = (settings.serviceAreas || '').split(',').map(s=>s.trim()).filter(Boolean);
-  const allLocations = Array.from(new Set([...settingsLocations, ...usedLocations])).sort();
-  const datalist = document.getElementById('jobBankLocations');
-  if(datalist) datalist.innerHTML = allLocations.map(l=>`<option value="${escapeAttr(l)}">`).join('');
-  if(locFilterEl){
-    const prevValue = locFilterEl.value;
-    locFilterEl.innerHTML = '<option value="all">All locations</option>' +
-      allLocations.map(l=>`<option value="${escapeAttr(l)}">${escapeHtml(l)}</option>`).join('');
-    locFilterEl.value = allLocations.includes(prevValue) ? prevValue : 'all';
-  }
 
   const list = document.getElementById('jobBankList');
   if(!list) return;
-  const filtered = jobBank.filter(e =>
-    (filter==='all' || e.status===filter) &&
-    (locFilter==='all' || e.location===locFilter)
-  );
+  const filtered = jobBank.filter(e => filter==='all' || e.status===filter);
   if(!filtered.length){
     list.innerHTML = '<div class="card"><small class="hint">No jobs here yet — click "+ New Job Request" to add one.</small></div>';
     return;
@@ -985,6 +1063,7 @@ function renderJobBank(){
       return `<div>${label} at ${fmt(h.price)} — ${escapeHtml(h.date)}</div>`;
     }).join('');
 
+    const gr = goingRateStatus(entry);
     const summaryRow = `
       <tr class="jb-row">
         <td style="min-width:180px;">
@@ -992,10 +1071,9 @@ function renderJobBank(){
           <strong>${escapeHtml(entry.name || '(untitled)')}</strong>
           <div style="margin-top:2px;">
             <span class="badge ${entry.status}">${entry.status==='active' ? 'Active' : 'Researching'}</span>
-            ${entry.location ? `<span class="badge location">${escapeHtml(entry.location)}</span>` : ''}
           </div>
         </td>
-        <td class="num">${rangeStr(entry.priceLow, entry.priceHigh, '£')}<br><small class="hint">now: ${fmt(entry.currentPrice||0)}</small></td>
+        <td class="num">${rangeStr(entry.priceLow, entry.priceHigh, '£')}<br><small class="hint">now: ${fmt(entry.currentPrice||0)}</small>${gr.cls ? `<br><span class="badge ${gr.cls}">${gr.label}</span>` : ''}</td>
         <td class="num">${rangeStr(entry.timeLow, entry.timeHigh, '')}${(entry.timeLow||entry.timeHigh) ? 'h' : ''}</td>
         <td class="num">${entry.materialsCost ? fmt(entry.materialsCost) : '—'}</td>
         <td class="num">${rangeStr(entry.treasureCostLow, entry.treasureCostHigh, '£')}</td>
@@ -1011,9 +1089,8 @@ function renderJobBank(){
       <tr class="no-print">
         <td colspan="6" class="detail-cell">
           <div class="field"><label>Job Name</label><input type="text" id="jb_name_${entry.id}" value="${escapeAttr(entry.name)}" placeholder="Job name (e.g. Mount TV on wall)" oninput="updateJobBankField('${entry.id}','name',this.value)"></div>
-          <div class="grid cols-3">
+          <div class="grid">
             <div class="field"><label>Category</label><input type="text" value="${escapeAttr(entry.category)}" oninput="updateJobBankField('${entry.id}','category',this.value)"></div>
-            <div class="field"><label>Location</label><input type="text" list="jobBankLocations" value="${escapeAttr(entry.location)}" placeholder="e.g. Guildford" oninput="updateJobBankField('${entry.id}','location',this.value)"></div>
             <div class="field">
               <label>Status</label>
               <select onchange="updateJobBankField('${entry.id}','status',this.value); renderJobBank();">
@@ -1603,7 +1680,6 @@ function openSettings(){
   document.getElementById('s_email').value = settings.email;
   document.getElementById('s_website').value = settings.website;
   document.getElementById('s_serviceArea').value = settings.serviceArea;
-  document.getElementById('s_serviceAreas').value = settings.serviceAreas;
   document.getElementById('s_bankName').value = settings.bankName;
   document.getElementById('s_bankAccount').value = settings.bankAccount;
   document.getElementById('s_sortCode').value = settings.sortCode;
@@ -1645,7 +1721,7 @@ function resetLogoToDefault(){
 }
 
 function resetBankDetailsToDefault(){
-  ['companyName','phone','website','serviceArea','serviceAreas','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     settings[key] = defaultSettings[key];
   });
   persistSettings();
@@ -1671,7 +1747,6 @@ function saveSettings(){
   settings.email = document.getElementById('s_email').value;
   settings.website = document.getElementById('s_website').value;
   settings.serviceArea = document.getElementById('s_serviceArea').value;
-  settings.serviceAreas = document.getElementById('s_serviceAreas').value;
   settings.bankName = document.getElementById('s_bankName').value;
   settings.bankAccount = document.getElementById('s_bankAccount').value;
   settings.sortCode = document.getElementById('s_sortCode').value;
@@ -2211,7 +2286,7 @@ function loadQuoteFromStorageOrBlank(){
   // blank from the shipped defaults; never overwrites something you've
   // actually typed in.
   let backfilled = false;
-  ['companyName','phone','website','serviceArea','serviceAreas','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     if(!settings[key] && defaultSettings[key]){
       settings[key] = defaultSettings[key];
       backfilled = true;

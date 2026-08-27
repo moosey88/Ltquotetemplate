@@ -91,6 +91,19 @@ customer quote, with no pricing on it:
 - Job details (customer name, address, mobile, job description) — read live
   from the Customer Quote tab, nothing to re-type
 - Site/reference photos with captions
+- **📷 360° Room Capture** — opens the phone's camera directly in the app
+  (not the native camera app) and guides you through 8 shots spaced evenly
+  around the room. On an iPhone (Safari, iOS 13+) it asks for compass access
+  and shows a ring that lights up as you turn — a photo is taken
+  automatically each time you face a new highlighted direction. Without
+  compass access (or on browsers that don't expose one) it falls back to a
+  manual "Capture this angle" button — turn slowly and tap roughly every
+  45°. Finishing (automatically after 8 shots, or early via "Finish now")
+  adds the 8 individual angle photos to the gallery plus one combined
+  side-by-side overview strip, so whoever's pricing the job can see the
+  whole room at a glance without being there. This needs the app served
+  over HTTPS (e.g. your GitHub Pages link) — camera access isn't available
+  when `index.html` is opened directly as a local file.
 - An estimate intake form for the Treasure to fill in: hours or days needed
   (no rate — pay is worked out individually, not by formula) and a
   materials-needed list with item / qty / estimated cost / notes, plus a

@@ -228,6 +228,22 @@
     font-size:13px;
     text-align:center;
   }
+  .add-photo-row{ display:flex; gap:10px; }
+  .add-photo-row .add-photo-btn{ flex:1; }
+  .capture-video-wrap{
+    position:relative; background:#000; border-radius:8px; overflow:hidden;
+  }
+  .capture-video-wrap video{ width:100%; max-height:60vh; display:block; object-fit:cover; }
+  .capture-ring{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .capture-hint{
+    position:absolute; left:0; right:0; bottom:0; text-align:center; color:#fff;
+    font-size:12px; text-shadow:0 1px 2px #000; background:rgba(0,0,0,.45); padding:6px 8px;
+  }
+  .capture-flash{
+    position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s;
+  }
+  .capture-flash.on{ opacity:.85; }
+  .capture-progress{ text-align:center; font-size:13px; color:var(--muted); margin-top:8px; }
   .internal-banner{
     background:#fff4d6;
     border:1px solid var(--warn);
@@ -498,7 +514,10 @@
       <h2>Site / Reference Photos</h2>
       <small class="hint">Photos of the job so whoever's doing the work can see what's involved.</small>
       <div class="photo-gallery" id="photoGallery"></div>
-      <div class="add-photo-btn no-print" onclick="document.getElementById('photoInput').click()">+ Add photo</div>
+      <div class="add-photo-row no-print">
+        <div class="add-photo-btn" onclick="document.getElementById('photoInput').click()">+ Add photo</div>
+        <div class="add-photo-btn" onclick="open360Capture()">📷 360° Room Capture</div>
+      </div>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="addPhotos(this.files)">
     </div>
 
@@ -673,6 +692,27 @@
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeSettings()">Cancel</button>
       <button class="btn" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="captureModal">
+  <div class="modal" style="max-width:520px;">
+    <h2>360° Room Capture</h2>
+    <small class="hint">Turn all the way around on the spot — the app guides you through 8 shots
+      spaced evenly around the room, then stitches them into one overview strip alongside the
+      individual angle photos.</small>
+    <div class="capture-video-wrap" style="margin-top:10px;">
+      <video id="captureVideo" autoplay playsinline muted></video>
+      <svg id="captureRing" class="capture-ring" viewBox="0 0 200 200"></svg>
+      <div class="capture-flash" id="captureFlash"></div>
+      <div class="capture-hint" id="captureHint">Starting camera…</div>
+    </div>
+    <div class="capture-progress" id="captureProgressText">0 / 8 angles captured</div>
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeCaptureModal()">Cancel</button>
+      <button class="btn small secondary" id="btnManualCapture" onclick="manualCapture()" style="display:none;">📸 Capture this angle</button>
+      <button class="btn" id="btnFinishNow" onclick="finishCapture()" style="display:none;">Finish now (<span id="finishNowCount">0</span>)</button>
     </div>
   </div>
 </div>
@@ -1520,6 +1560,218 @@ function addPhotos(files){
   document.getElementById('photoInput').value = '';
 }
 function removePhoto(idx){ quote.photos.splice(idx,1); renderPhotos(); }
+
+// ---------- 360° Room Capture ----------
+let captureStream = null;
+let captureFrames = [];
+let captureTargets = [];
+let captureHeadingAvailable = false;
+let captureLastCaptureTime = 0;
+let captureLastHeading = 0;
+
+async function open360Capture(){
+  if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+    alert('Your browser doesn\'t support in-app camera capture. Use "+ Add photo" instead to use your phone\'s regular camera.');
+    return;
+  }
+  if(!window.isSecureContext){
+    alert('360° camera capture needs the app running over HTTPS (e.g. your GitHub Pages link) — opening index.html directly from a file has no camera access. Use "+ Add photo" instead.');
+    return;
+  }
+
+  captureFrames = [];
+  captureTargets = [0,45,90,135,180,225,270,315];
+  captureHeadingAvailable = false;
+  captureLastCaptureTime = 0;
+
+  document.getElementById('captureModal').classList.add('show');
+  document.getElementById('captureRing').style.display = '';
+  document.getElementById('captureRing').innerHTML = '';
+  document.getElementById('btnManualCapture').style.display = 'none';
+  document.getElementById('captureHint').textContent = 'Starting camera…';
+  updateCaptureProgress();
+
+  // Ask for compass permission first, while still inside this click's user gesture (iOS 13+ requires that).
+  let orientationGranted = false;
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    try{
+      orientationGranted = (await DeviceOrientationEvent.requestPermission()) === 'granted';
+    }catch(e){ orientationGranted = false; }
+  } else if(typeof DeviceOrientationEvent !== 'undefined'){
+    orientationGranted = true;
+  }
+  if(orientationGranted) window.addEventListener('deviceorientation', handleCaptureOrientation);
+
+  try{
+    captureStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+  }catch(err){
+    alert('Could not access the camera: ' + err.message);
+    closeCaptureModal();
+    return;
+  }
+  document.getElementById('captureVideo').srcObject = captureStream;
+  document.getElementById('captureHint').textContent = 'Slowly turn in a full circle — photos are taken automatically as you face each highlighted point.';
+
+  setTimeout(()=>{
+    if(!captureHeadingAvailable){
+      document.getElementById('captureRing').style.display = 'none';
+      document.getElementById('btnManualCapture').style.display = '';
+      document.getElementById('captureHint').textContent = 'No compass available — turn slowly in a full circle, tapping "Capture this angle" roughly every 45° (8 photos).';
+    }
+  }, 1600);
+}
+
+function angleDiff(a, b){
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function handleCaptureOrientation(e){
+  let heading = null;
+  if(typeof e.webkitCompassHeading === 'number'){
+    heading = e.webkitCompassHeading;
+  } else if(e.alpha != null){
+    heading = 360 - e.alpha;
+  }
+  if(heading == null) return;
+  captureHeadingAvailable = true;
+  captureLastHeading = heading;
+  renderCaptureRing(heading);
+  maybeAutoCapture(heading);
+}
+
+function maybeAutoCapture(heading){
+  const now = Date.now();
+  if(now - captureLastCaptureTime < 900) return;
+  let best = null, bestDiff = 999;
+  captureTargets.forEach(t=>{
+    if(captureFrames.some(f=>f.angle === t)) return;
+    const diff = angleDiff(heading, t);
+    if(diff < bestDiff){ bestDiff = diff; best = t; }
+  });
+  if(best !== null && bestDiff <= 12){
+    captureLastCaptureTime = now;
+    captureFrame(best);
+  }
+}
+
+function renderCaptureRing(heading){
+  const svg = document.getElementById('captureRing');
+  if(svg.style.display === 'none') return;
+  const capturedAngles = captureFrames.map(f=>f.angle);
+  const dots = captureTargets.map(t=>{
+    const rad = t * Math.PI/180;
+    const x = 100 + 80*Math.sin(rad);
+    const y = 100 - 80*Math.cos(rad);
+    const done = capturedAngles.includes(t);
+    const active = !done && angleDiff(heading, t) <= 12;
+    const fill = done ? '#2e7d5b' : (active ? '#ffb703' : 'rgba(255,255,255,.3)');
+    return `<circle cx="${x}" cy="${y}" r="7" fill="${fill}" stroke="#fff" stroke-width="2"/>`;
+  }).join('');
+  svg.innerHTML = `
+    <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2"/>
+    ${dots}
+    <g transform="rotate(${heading} 100 100)">
+      <line x1="100" y1="100" x2="100" y2="30" stroke="#fff" stroke-width="3"/>
+      <polygon points="100,22 94,36 106,36" fill="#fff"/>
+    </g>
+  `;
+}
+
+function manualCapture(){
+  if(captureFrames.length >= captureTargets.length) return;
+  captureLastCaptureTime = Date.now();
+  captureFrame(captureTargets[captureFrames.length]);
+}
+
+function captureFrame(angle){
+  const video = document.getElementById('captureVideo');
+  const maxW = 1280;
+  const scale = Math.min(1, maxW / (video.videoWidth || maxW));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round((video.videoWidth || maxW) * scale);
+  canvas.height = Math.round((video.videoHeight || maxW*0.75) * scale);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  captureFrames.push({ angle, data: canvas.toDataURL('image/jpeg', 0.85) });
+  flashCapture();
+  updateCaptureProgress();
+  if(captureHeadingAvailable) renderCaptureRing(captureLastHeading);
+  if(captureFrames.length >= captureTargets.length){
+    setTimeout(finishCapture, 400);
+  }
+}
+
+function flashCapture(){
+  const el = document.getElementById('captureFlash');
+  el.classList.add('on');
+  setTimeout(()=>el.classList.remove('on'), 150);
+}
+
+function updateCaptureProgress(){
+  const n = captureFrames.length, total = captureTargets.length;
+  document.getElementById('captureProgressText').textContent = `${n} / ${total} angles captured`;
+  document.getElementById('btnFinishNow').style.display = n > 0 ? '' : 'none';
+  document.getElementById('finishNowCount').textContent = n;
+}
+
+function loadImageEl(src){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=>resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function buildCapturePanoramaStrip(frames){
+  return Promise.all(frames.map(f=>loadImageEl(f.data))).then(imgs=>{
+    const targetH = 320, gap = 3;
+    const widths = imgs.map(img=>Math.round(img.naturalWidth * (targetH / img.naturalHeight)));
+    const canvas = document.createElement('canvas');
+    canvas.width = widths.reduce((a,b)=>a+b, 0) + gap*(imgs.length-1);
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let x = 0;
+    imgs.forEach((img, i)=>{
+      ctx.drawImage(img, x, 0, widths[i], targetH);
+      x += widths[i] + gap;
+    });
+    return canvas.toDataURL('image/jpeg', 0.85);
+  });
+}
+
+function finishCapture(){
+  if(captureFrames.length === 0){ closeCaptureModal(); return; }
+  const frames = captureFrames.slice().sort((a,b)=>a.angle - b.angle);
+  stopCaptureStream();
+  buildCapturePanoramaStrip(frames).then(stripData=>{
+    quote.photos.push({ data: stripData, caption: `360° Room Overview (${frames.length} angles stitched side-by-side)` });
+    frames.forEach((f, i)=>{
+      const label = captureHeadingAvailable ? `${Math.round(f.angle)}°` : `shot ${i+1} of ${frames.length}`;
+      quote.photos.push({ data: f.data, caption: `360° Capture — ${label}` });
+    });
+    renderPhotos();
+    document.getElementById('captureModal').classList.remove('show');
+    captureFrames = [];
+  });
+}
+
+function stopCaptureStream(){
+  if(captureStream){
+    captureStream.getTracks().forEach(t=>t.stop());
+    captureStream = null;
+  }
+  window.removeEventListener('deviceorientation', handleCaptureOrientation);
+}
+
+function closeCaptureModal(){
+  stopCaptureStream();
+  document.getElementById('captureModal').classList.remove('show');
+  captureFrames = [];
+  captureHeadingAvailable = false;
+}
 
 function toggleDiscountFields(){
   const el = document.getElementById('discountFields');

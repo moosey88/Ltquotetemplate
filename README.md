@@ -182,44 +182,47 @@ without this step it would silently fail to appear in the exported PDF.
 ## Google Drive backup
 
 Everything else in this app lives only in the browser that made it (see
-"Data & privacy" below) — which is fine for drafts, but means a sent quote
-saved on one phone doesn't exist anywhere else. Google Drive backup closes
-that gap: once set up, every **Download PDF**, **Send to Customer**,
-**Download Treasure Brief PDF**, and **Send My Estimate to Office**
-silently uploads into two subfolders inside the Drive folder you chose:
+"Data & privacy" below) — which is fine for a single device, but means a
+quote started on a phone out on a job doesn't exist anywhere else until you
+do something about it. Google Drive backup closes that gap in two ways:
 
-- **PDFs** — the finished document itself, same as what got downloaded or
-  sent
-- **Quote Links** — a JSON snapshot of that quote's full data, kept in
-  sync (overwritten in place, not duplicated) every time that quote backs
-  up again
+- **While you're still drafting** — every edit anywhere in the app (not
+  just price/qty fields) auto-syncs the quote's data to Drive a few seconds
+  after you stop typing, silently, with no button to remember to press.
+  This is the one that actually matters for "start it on site, finish it
+  at home": the draft is in Drive before you've even downloaded or sent
+  anything.
+- **On Download PDF, Send to Customer, Download Treasure Brief PDF, and
+  Send My Estimate to Office** — same sync, plus the finished PDF itself,
+  with a toast confirming it (or saying if it failed) so you know it
+  actually landed for anything you're about to hand to a customer or
+  Treasure.
 
-Those subfolders are created automatically the first time you back
-something up — nothing to set up by hand. A small toast at the bottom of
-the screen confirms each backup (or says if one failed) without
-interrupting what you were doing; a failed backup never blocks the actual
-download or send, it just means that copy is local-only until you
-reconnect.
+Both write into two subfolders inside the Drive folder you chose, created
+automatically the first time you back something up:
 
-The Quote Links subfolder is what makes a quote genuinely reachable from
-any device, not just backed up as a static file:
+- **PDFs** — the finished documents
+- **Quote Links** — a JSON snapshot of each quote's full data, overwritten
+  in place (not duplicated) every time that quote syncs again — this is
+  what makes a quote reachable from another device at all, draft or not
+
+Reaching it back from another device works two ways:
 
 - **🔗 Copy Link** in the top bar copies a URL for the current quote
   (`?loadQuote=<reference>`). Opening that URL on any device signed into
   the same Drive folder loads that exact quote straight into the app,
-  fully editable — checked locally first (instant, no network), then
-  fetched from the Quote Links subfolder if it's not already on that
-  device.
+  fully editable — checked locally first, then fetched from Drive if it's
+  not already on that device.
 - The **Load saved quote** dropdown does the same merge automatically: it
   lists quotes saved on this device, plus — if Drive is connected — any
-  quote backed up from another device that isn't already local, labelled
-  "(from Drive)". Picking one of those fetches and caches it locally, so
-  it's instant from then on.
+  quote synced from another device that isn't already local, labelled
+  "(from Drive)", including ones still mid-draft that were never
+  downloaded or sent anywhere. Picking one fetches and caches it locally.
 
-This works from a plain static page because Google's own client-side
-sign-in is the security boundary — nothing uploads until *you* sign in and
-approve it, so unlike an AI API key there's nothing secret to leak. Setup
-is one-time per Google Cloud project (not per device):
+None of this works until a device has signed in, though — there's no
+shared login between your phone and your laptop, since there's no backend
+holding a session for either of them. Each device connects to Drive on its
+own, once. Setup is one-time per Google Cloud project (not per device):
 
 1. At **console.cloud.google.com**, sign in with your Google Workspace
    account and create a project (e.g. "Local Treasures Quote Tool").
@@ -242,12 +245,19 @@ is one-time per Google Cloud project (not per device):
    sign-in popup) and **📁 Choose Drive Folder** (pick or create the folder
    quotes should land in — e.g. your existing Customer Quotes folder).
 
-Each of those steps only needs doing once for the business, not per device
-— from then on, anyone signing in from a new device just needs the Client
-ID/API Key pasted into their Settings (the same two values every time) and
-to Connect + Choose Folder on that device. The access token itself is never
-stored — it's requested fresh (silently, no popup, if you signed in
-recently) each time a PDF backs up, and kept in memory only.
+Steps 1-5 only need doing once for the business, not per device. Every new
+device — a phone, someone else's laptop — still needs its own one-time
+Connect: the Client ID ships baked into the app already, but the API Key
+has to be entered per device (typing `AIza...` on a phone keyboard is no
+fun, so open **Settings → Google Drive Backup** once on a device that
+already has it, and instead of reading it out, share a link in the form
+`https://moosey88.github.io/Ltquotetemplate/?driveSetup=<your API key>` —
+opening that on the new device fills the key in and opens Settings
+automatically, so all that's left is tapping **Connect Google Drive** and
+**Choose Drive Folder**. The access token itself is never stored — it's
+requested fresh (silently, no popup, if you signed in recently) each time
+something syncs, and kept in memory only, which is also why a sync can
+occasionally need that reconnect: it only lasts the current browser tab.
 
 Access is scoped to Google's `drive.file` permission — the narrowest Drive
 scope there is. It only ever lets this app see files it creates itself, or

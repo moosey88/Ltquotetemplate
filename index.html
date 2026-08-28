@@ -1268,6 +1268,7 @@ function saveQuoteOutcome(){
   }
 
   localStorage.setItem(LS_CURRENT, JSON.stringify(quote));
+  scheduleDriveSync();
 }
 
 function blankQuote(){
@@ -1412,6 +1413,17 @@ function updateTreasureUnitLabels(){
   document.getElementById('t_valueLabel').textContent = unit === 'days' ? 'Days' : 'Hours';
 }
 document.getElementById('t_unit').addEventListener('change', updateTreasureUnitLabels);
+
+// A lot of fields (customer name, item descriptions, comments, notes...)
+// only ever get written into `quote` when recalc() happens to run, which
+// until now meant typing into any of those alone — without also touching a
+// price/qty/discount field — never persisted the draft locally, let alone
+// synced it to Drive. This delegated listener runs recalc() on any edit
+// anywhere in the main content, so every field reliably keeps the current
+// draft (and its Drive backup, via scheduleDriveSync() inside recalc())
+// up to date, not just the handful of fields that already called it directly.
+document.querySelector('main').addEventListener('input', recalc);
+document.querySelector('main').addEventListener('change', recalc);
 
 function renderFooter(){
   const parts = [];
@@ -1646,6 +1658,7 @@ function recalc(){
   });
 
   localStorage.setItem(LS_CURRENT, JSON.stringify(quote));
+  scheduleDriveSync();
 }
 
 // ---------- Save / Load ----------
@@ -2043,6 +2056,28 @@ async function saveQuoteLinkToDrive(token){
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
   await fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: 'Bearer ' + token }, body: form });
+}
+
+// Keeps drafts in sync while you work, not just finished/sent quotes — the
+// real case this is for: starting a quote on site, then picking it back up
+// on a laptop later, before it's ever been downloaded or sent. Debounced
+// so it fires a few seconds after you stop typing, not on every keystroke,
+// and stays completely silent (no toast) either way — this runs constantly
+// in the background, and a wall of toasts while you're mid-edit would be
+// worse than the odd draft not syncing instantly.
+let driveSyncTimer = null;
+function scheduleDriveSync(){
+  if(!settings.driveFolderId) return;
+  clearTimeout(driveSyncTimer);
+  driveSyncTimer = setTimeout(async ()=>{
+    try{
+      const token = await getDriveAccessToken(false);
+      await saveQuoteLinkToDrive(token);
+    }catch(e){
+      // silent — the explicit Download PDF / Send / Copy Link actions
+      // still surface a clear toast if Drive genuinely isn't reachable
+    }
+  }, 3000);
 }
 
 // Fire-and-forget: uploads a copy of a generated PDF into the Drive
@@ -2641,6 +2676,22 @@ function loadQuoteFromStorageOrBlank(){
   renderJobBank();
 
   const params = new URLSearchParams(location.search);
+
+  // One-tap Drive setup for a new device: opening a link with ?driveSetup=
+  // fills in the Google API Key (the one field that can't ship baked into
+  // the app, and is a pain to type on a phone keyboard) and prompts you to
+  // finish with Connect + Choose Folder — instead of copying it by hand.
+  const driveSetupParam = params.get('driveSetup');
+  if(driveSetupParam){
+    settings.googleApiKey = driveSetupParam;
+    persistSettings();
+    history.replaceState(null, '', location.pathname);
+    setTimeout(()=>{
+      openSettings();
+      alert('Google API Key filled in from your setup link. Click Connect Google Drive, then Choose Drive Folder, to finish setting up this device.');
+    }, 50);
+  }
+
   const treasureParam = params.get('treasure');
   const replyParam = params.get('treasureReply');
   const loadQuoteRef = params.get('loadQuote');

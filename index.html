@@ -828,7 +828,7 @@ const defaultSettings = {
   email:'',
   website:'www.localtreasures.me',
   serviceArea:'Farnham, Surrey',
-  googleClientId:'',
+  googleClientId:'921281924732-tv5o96c95m360ifjqauakanj27o45kde.apps.googleusercontent.com',
   googleApiKey:'',
   driveFolderId:'',
   driveFolderName:'',
@@ -2482,7 +2482,7 @@ function loadQuoteFromStorageOrBlank(){
   // blank from the shipped defaults; never overwrites something you've
   // actually typed in.
   let backfilled = false;
-  ['companyName','phone','website','serviceArea','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
+  ['companyName','phone','website','serviceArea','googleClientId','bankName','bankAccount','sortCode','fullTermsUrl'].forEach(key=>{
     if(!settings[key] && defaultSettings[key]){
       settings[key] = defaultSettings[key];
       backfilled = true;

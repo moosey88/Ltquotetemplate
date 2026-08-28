@@ -155,7 +155,10 @@ without this step it would silently fail to appear in the exported PDF.
 ## Saving & sending
 
 - **Save** stores the current quote in the browser (localStorage) so you can
-  come back to it later via the **Load saved quote** dropdown.
+  come back to it later via the **Load saved quote** dropdown. Save only
+  stores locally — it doesn't touch Drive, since it fires on every draft
+  edit and would otherwise flood Drive with half-finished copies. Download
+  PDF and Send are what actually back a quote up (see below).
 - **Print** opens the browser print dialog with the internal tab and all app
   chrome hidden — "Save as PDF" from there gives you a clean customer-facing
   document too.
@@ -182,12 +185,36 @@ Everything else in this app lives only in the browser that made it (see
 "Data & privacy" below) — which is fine for drafts, but means a sent quote
 saved on one phone doesn't exist anywhere else. Google Drive backup closes
 that gap: once set up, every **Download PDF**, **Send to Customer**,
-**Download Treasure Brief PDF**, and **Send My Estimate to Office** also
-silently uploads a copy of that PDF into a Drive folder you choose — from
-any device you've signed into, no server involved. A small toast at the
-bottom of the screen confirms each backup (or says if one failed) without
+**Download Treasure Brief PDF**, and **Send My Estimate to Office**
+silently uploads into two subfolders inside the Drive folder you chose:
+
+- **PDFs** — the finished document itself, same as what got downloaded or
+  sent
+- **Quote Links** — a JSON snapshot of that quote's full data, kept in
+  sync (overwritten in place, not duplicated) every time that quote backs
+  up again
+
+Those subfolders are created automatically the first time you back
+something up — nothing to set up by hand. A small toast at the bottom of
+the screen confirms each backup (or says if one failed) without
 interrupting what you were doing; a failed backup never blocks the actual
-download or send, it just means that copy is local-only until you reconnect.
+download or send, it just means that copy is local-only until you
+reconnect.
+
+The Quote Links subfolder is what makes a quote genuinely reachable from
+any device, not just backed up as a static file:
+
+- **🔗 Copy Link** in the top bar copies a URL for the current quote
+  (`?loadQuote=<reference>`). Opening that URL on any device signed into
+  the same Drive folder loads that exact quote straight into the app,
+  fully editable — checked locally first (instant, no network), then
+  fetched from the Quote Links subfolder if it's not already on that
+  device.
+- The **Load saved quote** dropdown does the same merge automatically: it
+  lists quotes saved on this device, plus — if Drive is connected — any
+  quote backed up from another device that isn't already local, labelled
+  "(from Drive)". Picking one of those fetches and caches it locally, so
+  it's instant from then on.
 
 This works from a plain static page because Google's own client-side
 sign-in is the security boundary — nothing uploads until *you* sign in and

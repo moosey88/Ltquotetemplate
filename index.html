@@ -329,6 +329,7 @@
   <select id="loadSelect" class="no-print" title="Load a saved quote"></select>
   <button class="no-print" id="btnNew" onclick="newQuote()">New</button>
   <button class="no-print" id="btnSave" onclick="saveQuote()">Save</button>
+  <button class="no-print" id="btnCopyDriveLink" onclick="copyDriveQuoteLink()" title="Copy a link to open this quote on any device signed into Drive">🔗 Copy Link</button>
   <button class="no-print" id="btnDelete" onclick="deleteCurrentQuote()">Delete</button>
   <button class="no-print" id="btnSettings" onclick="openSettings()">Settings</button>
   <button class="no-print" id="btnPrint" onclick="window.print()">Print</button>
@@ -787,7 +788,7 @@ function enterTreasureLinkMode(payload){
   quote.comments = payload.comments || '';
 
   document.getElementById('appTitle').textContent = 'Job Estimate';
-  ['loadSelect','btnNew','btnSave','btnDelete','btnSettings','btnPrint','btnDownloadQuotePdf','btnSendToCustomer']
+  ['loadSelect','btnNew','btnSave','btnCopyDriveLink','btnDelete','btnSettings','btnPrint','btnDownloadQuotePdf','btnSendToCustomer']
     .forEach(id=>{ const el = document.getElementById(id); if(el) el.style.display = 'none'; });
   document.getElementById('tabBar').style.display = 'none';
   document.getElementById('getTreasureLinkCard').style.display = 'none';
@@ -814,7 +815,7 @@ function handleTreasureReplyImport(payload){
   persistAllQuotes(all);
   quote = match;
   refreshLoadSelect();
-  document.getElementById('loadSelect').value = match.id;
+  document.getElementById('loadSelect').value = 'local:' + match.id;
   renderQuoteToForm();
   showTab('treasure');
   alert(`Imported the Treasure's estimate into Quote ${match.ref}.`);
@@ -832,6 +833,8 @@ const defaultSettings = {
   googleApiKey:'',
   driveFolderId:'',
   driveFolderName:'',
+  drivePdfFolderId:'',
+  driveLinksFolderId:'',
   bankName:'Local Treasures Ltd',
   bankAccount:'08975159',
   sortCode:'04-00-75',
@@ -1303,6 +1306,17 @@ function blankQuote(){
   };
 }
 
+// Fills in any fields a quote object might be missing — from an older save,
+// or one loaded from Drive — with safe defaults, never overwriting what's
+// already there. Shared by every path that can hand `quote` a stored object.
+function normalizeQuote(q){
+  if(!q.internal.materialsList) q.internal.materialsList = [];
+  if(!q.discount) q.discount = { type:'percent', value:0, reason:'' };
+  if(!q.treasure) q.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+  if(!q.outcome) q.outcome = 'pending';
+  return q;
+}
+
 function fmt(n){ return '£' + (Number(n)||0).toFixed(2); }
 
 function computeTotals(q){
@@ -1641,7 +1655,7 @@ function saveQuote(){
   all[quote.id] = quote;
   persistAllQuotes(all);
   refreshLoadSelect();
-  document.getElementById('loadSelect').value = quote.id;
+  document.getElementById('loadSelect').value = 'local:' + quote.id;
   alert('Quote saved: ' + (quote.customer.name || quote.ref));
 }
 
@@ -1654,27 +1668,69 @@ function deleteCurrentQuote(){
   newQuote();
 }
 
-function refreshLoadSelect(){
+// Populates the Load-saved-quote dropdown from quotes saved on this device
+// (value prefixed "local:"), plus — if Drive is connected — quotes backed
+// up from any device that aren't already saved locally (value prefixed
+// "drive:", fetched on selection). Local entries always win when the same
+// quote exists in both places, since they load instantly with no network.
+async function refreshLoadSelect(){
   const all = loadAllQuotes();
   const sel = document.getElementById('loadSelect');
+  const previousValue = sel.value;
   sel.innerHTML = '<option value="">Load saved quote…</option>';
+  const localRefs = new Set();
   Object.values(all).sort((a,b)=> (b.date||'').localeCompare(a.date||'')).forEach(q=>{
+    localRefs.add(q.ref);
     const opt = document.createElement('option');
-    opt.value = q.id;
+    opt.value = 'local:' + q.id;
     opt.textContent = `${q.ref} — ${q.customer.name || 'No name'} (${q.date})`;
     sel.appendChild(opt);
   });
+  sel.value = previousValue;
+
+  if(settings.driveFolderId){
+    const driveFiles = await fetchDriveQuoteList();
+    driveFiles.forEach(f=>{
+      const ref = f.name.replace(/^Quote-/, '').replace(/\.json$/, '');
+      if(localRefs.has(ref)) return; // already have a local copy — that one's faster to open
+      const opt = document.createElement('option');
+      opt.value = 'drive:' + f.id;
+      opt.textContent = `${ref} (from Drive)`;
+      sel.appendChild(opt);
+    });
+    if(sel.value !== previousValue) sel.value = previousValue;
+  }
 }
 
-document.getElementById('loadSelect').addEventListener('change', function(){
-  if(!this.value) return;
-  const all = loadAllQuotes();
-  if(all[this.value]){
-    quote = all[this.value];
-    if(!quote.internal.materialsList) quote.internal.materialsList = [];
-    if(!quote.discount) quote.discount = { type:'percent', value:0, reason:'' };
-    if(!quote.treasure) quote.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
-    renderQuoteToForm();
+document.getElementById('loadSelect').addEventListener('change', async function(){
+  const val = this.value;
+  if(!val) return;
+  if(val.startsWith('local:')){
+    const id = val.slice(6);
+    const all = loadAllQuotes();
+    if(all[id]){
+      quote = normalizeQuote(all[id]);
+      renderQuoteToForm();
+    }
+  } else if(val.startsWith('drive:')){
+    const fileId = val.slice(6);
+    try{
+      const token = await getDriveAccessToken(false);
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if(!res.ok) throw new Error('fetch-failed');
+      const data = await res.json();
+      quote = normalizeQuote(data);
+      const all = loadAllQuotes();
+      all[quote.id] = quote;
+      persistAllQuotes(all);
+      renderQuoteToForm();
+      refreshLoadSelect();
+    }catch(e){
+      alert('Could not load that quote from Drive — check that Google Drive is connected in Settings and try again.');
+      this.value = '';
+    }
   }
 });
 
@@ -1931,6 +1987,8 @@ async function chooseDriveFolder(){
         const folder = data.docs[0];
         settings.driveFolderId = folder.id;
         settings.driveFolderName = folder.name;
+        settings.drivePdfFolderId = '';
+        settings.driveLinksFolderId = '';
         persistSettings();
         updateDriveStatusUi();
         driveToast(`Quotes will back up to "${folder.name}".`);
@@ -1940,10 +1998,59 @@ async function chooseDriveFolder(){
   picker.setVisible(true);
 }
 
-// Fire-and-forget: uploads a copy of a generated PDF to the chosen Drive
-// folder. Never blocks or fails the actual download/send it's attached to —
-// a Drive hiccup should never stop a quote reaching the customer.
-async function backupPdfToDrive(doc, filename){
+// Finds (or creates, first time) a named subfolder under the chosen Drive
+// folder, caching its id in settings so this only hits the network once.
+async function ensureDriveSubfolder(token, name){
+  const cacheKey = name === 'PDFs' ? 'drivePdfFolderId' : 'driveLinksFolderId';
+  if(settings[cacheKey]) return settings[cacheKey];
+  const findQ = `name='${name}' and '${settings.driveFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(findQ)}&fields=files(id)`, {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  const listData = await listRes.json();
+  if(listData.files && listData.files.length){
+    settings[cacheKey] = listData.files[0].id;
+  } else {
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [settings.driveFolderId] })
+    });
+    const createData = await createRes.json();
+    settings[cacheKey] = createData.id;
+  }
+  persistSettings();
+  return settings[cacheKey];
+}
+
+// Writes (or overwrites in place) a JSON snapshot of the current quote into
+// the Quote Links subfolder — this is what a shareable quote link reads
+// back on another device, so it needs to stay in sync with what's on screen.
+async function saveQuoteLinkToDrive(token){
+  const folderId = await ensureDriveSubfolder(token, 'Quote Links');
+  const filename = `Quote-${quote.ref}.json`;
+  const findQ = `name='${filename.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed=false`;
+  const findRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(findQ)}&fields=files(id)`, {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  const findData = await findRes.json();
+  const existingId = findData.files && findData.files[0] && findData.files[0].id;
+  const metadata = existingId ? { name: filename } : { name: filename, parents: [folderId] };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', new Blob([JSON.stringify(quote)], { type: 'application/json' }));
+  const url = existingId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  await fetch(url, { method: existingId ? 'PATCH' : 'POST', headers: { Authorization: 'Bearer ' + token }, body: form });
+}
+
+// Fire-and-forget: uploads a copy of a generated PDF into the Drive
+// folder's PDFs subfolder, and refreshes the quote's JSON snapshot in its
+// Quote Links subfolder so a shareable link always opens the latest
+// version. Never blocks or fails the actual download/send it's attached
+// to — a Drive hiccup should never stop a quote reaching the customer.
+async function backupQuoteToDrive(doc, filename){
   if(!settings.driveFolderId) return;
   // A fresh page load (new tab, or a reload since you last hit Connect)
   // starts with no token in memory at all — that's not a failure, it just
@@ -1951,8 +2058,9 @@ async function backupPdfToDrive(doc, filename){
   const hadTokenAlready = !!driveAccessToken;
   try{
     const token = await getDriveAccessToken(false);
+    const pdfFolderId = await ensureDriveSubfolder(token, 'PDFs');
     const blob = doc.output('blob');
-    const metadata = { name: filename, parents: [settings.driveFolderId] };
+    const metadata = { name: filename, parents: [pdfFolderId] };
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type:'application/json' }));
     form.append('file', blob);
@@ -1961,14 +2069,97 @@ async function backupPdfToDrive(doc, filename){
       headers: { Authorization: 'Bearer ' + token },
       body: form
     });
-    if(res.ok){ driveToast(`Saved to Drive: ${filename}`); }
-    else{ driveToast('Drive backup failed — saved locally only. Try Connect Google Drive again in Settings.'); }
+    if(!res.ok) throw new Error('upload-failed');
+    await saveQuoteLinkToDrive(token);
+    driveToast(`Saved to Drive: ${filename}`);
   }catch(e){
     if(hadTokenAlready){
       driveToast('Drive backup failed — saved locally only. Try Connect Google Drive again in Settings.');
     }else{
       driveToast('Not signed into Drive this session — open Settings and click Connect Google Drive, then try again.');
     }
+  }
+}
+
+// Builds a link to this quote (by reference) that any device signed into
+// the same Drive folder can open to load it straight into the app.
+function driveQuoteLink(){
+  if(!quote.ref) return null;
+  return buildAppUrl() + '?loadQuote=' + encodeURIComponent(quote.ref);
+}
+
+async function copyDriveQuoteLink(){
+  if(!settings.driveFolderId){
+    alert('Connect Google Drive and choose a folder in Settings first — a quote link only works once quotes are backing up there.');
+    return;
+  }
+  recalc();
+  try{
+    const token = await getDriveAccessToken(false);
+    await saveQuoteLinkToDrive(token);
+  }catch(e){
+    driveToast('Could not sync to Drive first — the link may open an older version. Try Connect Google Drive again in Settings.');
+  }
+  const link = driveQuoteLink();
+  if(!link){ alert('Save the quote first so it has a reference number.'); return; }
+  try{
+    await navigator.clipboard.writeText(link);
+    driveToast('Link copied — opens this quote on any device signed into Drive.');
+  }catch(e){
+    prompt('Copy this link:', link);
+  }
+}
+
+// Used both by the Load-saved-quote dropdown's Drive entries and by opening
+// a shareable quote link on a device that doesn't have this quote locally.
+async function loadQuoteFromDriveByRef(ref){
+  if(!settings.driveFolderId){
+    alert(`This link opens quote ${ref}, but Google Drive isn't connected on this device yet. Open Settings, click Connect Google Drive and Choose Drive Folder, then open the link again.`);
+    return;
+  }
+  try{
+    const token = await getDriveAccessToken(false);
+    const folderId = await ensureDriveSubfolder(token, 'Quote Links');
+    const filename = `Quote-${ref}.json`;
+    const findQ = `name='${filename.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed=false`;
+    const findRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(findQ)}&fields=files(id)`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const findData = await findRes.json();
+    const fileId = findData.files && findData.files[0] && findData.files[0].id;
+    if(!fileId){ alert(`Couldn't find quote ${ref} in Drive.`); return; }
+    const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if(!fileRes.ok) throw new Error('fetch-failed');
+    const data = await fileRes.json();
+    quote = normalizeQuote(data);
+    const all = loadAllQuotes();
+    all[quote.id] = quote;
+    persistAllQuotes(all);
+    renderQuoteToForm();
+    refreshLoadSelect();
+  }catch(e){
+    alert(`Couldn't load quote ${ref} from Drive — open Settings, click Connect Google Drive, then try the link again.`);
+  }
+}
+
+// Lists the quote snapshots in the Quote Links subfolder, for the
+// Load-saved-quote dropdown to offer quotes saved from other devices.
+async function fetchDriveQuoteList(){
+  if(!settings.driveFolderId) return [];
+  try{
+    const token = await getDriveAccessToken(false);
+    const folderId = await ensureDriveSubfolder(token, 'Quote Links');
+    const listQ = `'${folderId}' in parents and trashed=false`;
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(listQ)}&fields=files(id,name)&orderBy=modifiedTime desc&pageSize=200`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if(!res.ok) return [];
+    const data = await res.json();
+    return data.files || [];
+  }catch(e){
+    return [];
   }
 }
 
@@ -2173,7 +2364,7 @@ function downloadQuotePdf(){
   const doc = buildQuotePdf();
   const filename = quotePdfFilename();
   doc.save(filename);
-  backupPdfToDrive(doc, filename);
+  backupQuoteToDrive(doc, filename);
 }
 
 // ---------- Treasure Brief PDF ----------
@@ -2317,7 +2508,7 @@ function downloadTreasureBriefPdf(){
   const doc = buildTreasureBriefPdf();
   const filename = treasureBriefPdfFilename();
   doc.save(filename);
-  backupPdfToDrive(doc, filename);
+  backupQuoteToDrive(doc, filename);
 }
 
 function applyEstimateToInternal(){
@@ -2373,7 +2564,7 @@ async function sendTreasureEstimate(){
   const doc = buildTreasureBriefPdf();
   const blob = doc.output('blob');
   const filename = treasureBriefPdfFilename();
-  backupPdfToDrive(doc, filename);
+  backupQuoteToDrive(doc, filename);
   let file;
   try{ file = new File([blob], filename, {type:'application/pdf'}); }catch(e){ file = null; }
 
@@ -2406,7 +2597,7 @@ async function sendToCustomer(){
   const doc = buildQuotePdf();
   const blob = doc.output('blob');
   const filename = quotePdfFilename();
-  backupPdfToDrive(doc, filename);
+  backupQuoteToDrive(doc, filename);
   const shareText = `Hi ${quote.customer.name || ''}, please find your quote from ${settings.companyName} attached (Ref ${quote.ref}, total ${fmt(computeTotals(quote).total)}).`;
 
   let file;
@@ -2439,14 +2630,7 @@ async function sendToCustomer(){
 
 function loadQuoteFromStorageOrBlank(){
   const current = localStorage.getItem(LS_CURRENT);
-  if(current){
-    const q = JSON.parse(current);
-    if(!q.internal.materialsList) q.internal.materialsList = [];
-    if(!q.discount) q.discount = { type:'percent', value:0, reason:'' };
-    if(!q.treasure) q.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
-    if(!q.outcome) q.outcome = 'pending';
-    return q;
-  }
+  if(current) return normalizeQuote(JSON.parse(current));
   return blankQuote();
 }
 
@@ -2459,6 +2643,7 @@ function loadQuoteFromStorageOrBlank(){
   const params = new URLSearchParams(location.search);
   const treasureParam = params.get('treasure');
   const replyParam = params.get('treasureReply');
+  const loadQuoteRef = params.get('loadQuote');
 
   if(treasureParam){
     try{
@@ -2474,6 +2659,18 @@ function loadQuoteFromStorageOrBlank(){
       handleTreasureReplyImport(JSON.parse(replyParam));
     }catch(e){
       alert('That reply link could not be read — it may be incomplete or corrupted.');
+    }
+  } else if(loadQuoteRef){
+    quote = loadQuoteFromStorageOrBlank();
+    history.replaceState(null, '', location.pathname);
+    const all = loadAllQuotes();
+    const localMatch = Object.values(all).find(q=>q.ref === loadQuoteRef);
+    if(localMatch){
+      quote = normalizeQuote(localMatch);
+    } else {
+      // Runs after the initial render below, since it needs a moment for
+      // the Google scripts (loaded async) to be ready.
+      setTimeout(()=>loadQuoteFromDriveByRef(loadQuoteRef), 300);
     }
   } else {
     quote = loadQuoteFromStorageOrBlank();

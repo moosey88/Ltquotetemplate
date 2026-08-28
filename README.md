@@ -176,9 +176,63 @@ without this step it would silently fail to appear in the exported PDF.
   Brevo) to send automatically; that's a bigger, separate build if it's ever
   worth doing.
 
+## Google Drive backup
+
+Everything else in this app lives only in the browser that made it (see
+"Data & privacy" below) — which is fine for drafts, but means a sent quote
+saved on one phone doesn't exist anywhere else. Google Drive backup closes
+that gap: once set up, every **Download PDF**, **Send to Customer**,
+**Download Treasure Brief PDF**, and **Send My Estimate to Office** also
+silently uploads a copy of that PDF into a Drive folder you choose — from
+any device you've signed into, no server involved. A small toast at the
+bottom of the screen confirms each backup (or says if one failed) without
+interrupting what you were doing; a failed backup never blocks the actual
+download or send, it just means that copy is local-only until you reconnect.
+
+This works from a plain static page because Google's own client-side
+sign-in is the security boundary — nothing uploads until *you* sign in and
+approve it, so unlike an AI API key there's nothing secret to leak. Setup
+is one-time per Google Cloud project (not per device):
+
+1. At **console.cloud.google.com**, sign in with your Google Workspace
+   account and create a project (e.g. "Local Treasures Quote Tool").
+2. **APIs & Services → Library** — enable **Google Drive API** and
+   **Google Picker API**.
+3. **APIs & Services → OAuth consent screen** — User Type **Internal**
+   (only available on Workspace; means no Google review and no "unverified
+   app" warning, restricted to your own domain's accounts). Fill in an app
+   name and support email.
+4. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
+   — type **Web application**, add this app's URL under "Authorized
+   JavaScript origins" (e.g. `https://moosey88.github.io`). Copy the
+   **Client ID**.
+5. **APIs & Services → Credentials → Create Credentials → API key** — then
+   restrict it: **HTTP referrers** matching this app's URL (e.g.
+   `https://moosey88.github.io/*`), and **API restrictions** limited to
+   **Google Picker API** only. Copy the **API key**.
+6. In this app's **Settings → Google Drive Backup**, paste in the Client ID
+   and API Key, Save, then click **🔗 Connect Google Drive** (Google
+   sign-in popup) and **📁 Choose Drive Folder** (pick or create the folder
+   quotes should land in — e.g. your existing Customer Quotes folder).
+
+Each of those steps only needs doing once for the business, not per device
+— from then on, anyone signing in from a new device just needs the Client
+ID/API Key pasted into their Settings (the same two values every time) and
+to Connect + Choose Folder on that device. The access token itself is never
+stored — it's requested fresh (silently, no popup, if you signed in
+recently) each time a PDF backs up, and kept in memory only.
+
+Access is scoped to Google's `drive.file` permission — the narrowest Drive
+scope there is. It only ever lets this app see files it creates itself, or
+a folder you explicitly hand it through the picker; it cannot browse, read,
+or touch anything else in your Drive.
+
 ## Data & privacy
 
 Everything (quotes, photos, settings) is stored locally in the browser via
-`localStorage` — nothing is sent anywhere. Photos are embedded as base64, so
-very large photo libraries across many quotes can bump up against browser
-storage limits; keep images reasonably sized (a phone photo is fine).
+`localStorage` — nothing is sent anywhere unless you've set up Google Drive
+backup above, in which case only the generated PDFs are uploaded, to the
+folder you chose, using your own Google sign-in. Photos are embedded as
+base64, so very large photo libraries across many quotes can bump up
+against browser storage limits; keep images reasonably sized (a phone photo
+is fine).

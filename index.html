@@ -670,6 +670,26 @@
     </div>
     <div class="field"><label>Default Terms &amp; Conditions</label><textarea id="s_terms" rows="4"></textarea></div>
     <div class="field"><label>Default Project Comments</label><textarea id="s_comments" rows="3"></textarea></div>
+
+    <h2 style="margin-top:18px;">Google Drive Backup</h2>
+    <small class="hint">
+      One-time setup (per Google Cloud project, not per device) — see the app's
+      README for the Cloud Console steps. Paste the Client ID and API Key here
+      once you have them; they're not secret the way an API key for an AI
+      service is, since nothing works without you personally signing in and
+      approving it. Every PDF you download or send then also uploads to the
+      Drive folder you pick below, from any device you sign into.
+    </small>
+    <div class="grid" style="margin-top:8px;">
+      <div class="field"><label>Google Client ID</label><input type="text" id="s_googleClientId" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>
+      <div class="field"><label>Google API Key</label><input type="text" id="s_googleApiKey" placeholder="AIza..."></div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+      <button type="button" class="btn small secondary" onclick="connectGoogleDrive()">🔗 Connect Google Drive</button>
+      <button type="button" class="btn small secondary" onclick="chooseDriveFolder()">📁 Choose Drive Folder</button>
+      <span class="hint" id="driveStatus">Not connected</span>
+    </div>
+
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeSettings()">Cancel</button>
       <button class="btn" onclick="saveSettings()">Save Settings</button>
@@ -678,6 +698,8 @@
 </div>
 
 <script src="vendor/jspdf.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <script>
 const LS_QUOTES = 'quoteapp_quotes_v1';
 const LS_SETTINGS = 'quoteapp_settings_v1';
@@ -806,6 +828,10 @@ const defaultSettings = {
   email:'',
   website:'www.localtreasures.me',
   serviceArea:'Farnham, Surrey',
+  googleClientId:'',
+  googleApiKey:'',
+  driveFolderId:'',
+  driveFolderName:'',
   bankName:'Local Treasures Ltd',
   bankAccount:'08975159',
   sortCode:'04-00-75',
@@ -1680,6 +1706,9 @@ function openSettings(){
   document.getElementById('s_email').value = settings.email;
   document.getElementById('s_website').value = settings.website;
   document.getElementById('s_serviceArea').value = settings.serviceArea;
+  document.getElementById('s_googleClientId').value = settings.googleClientId;
+  document.getElementById('s_googleApiKey').value = settings.googleApiKey;
+  updateDriveStatusUi();
   document.getElementById('s_bankName').value = settings.bankName;
   document.getElementById('s_bankAccount').value = settings.bankAccount;
   document.getElementById('s_sortCode').value = settings.sortCode;
@@ -1747,6 +1776,8 @@ function saveSettings(){
   settings.email = document.getElementById('s_email').value;
   settings.website = document.getElementById('s_website').value;
   settings.serviceArea = document.getElementById('s_serviceArea').value;
+  settings.googleClientId = document.getElementById('s_googleClientId').value.trim();
+  settings.googleApiKey = document.getElementById('s_googleApiKey').value.trim();
   settings.bankName = document.getElementById('s_bankName').value;
   settings.bankAccount = document.getElementById('s_bankAccount').value;
   settings.sortCode = document.getElementById('s_sortCode').value;
@@ -1760,6 +1791,165 @@ function saveSettings(){
   closeSettings();
   renderFooter();
   renderBrandHeader();
+}
+
+// ---------- Google Drive backup ----------
+// Uses Google's own client-side sign-in (Google Identity Services) plus the
+// Drive "drive.file" scope, which only ever lets this app see files it
+// creates or that you explicitly hand it via the picker below — never your
+// whole Drive. The access token this produces lives in memory only (never
+// localStorage): it's short-lived by design, and re-requesting it is cheap.
+let driveAccessToken = null;
+let driveTokenExpiry = 0;
+let driveTokenClient = null;
+let drivePickerLoaded = false;
+
+function driveToast(msg){
+  let el = document.getElementById('driveToastEl');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'driveToastEl';
+    el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:9999;opacity:0;transition:opacity .2s;max-width:90vw;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>{ el.style.opacity = '0'; }, 3500);
+}
+
+function updateDriveStatusUi(){
+  const el = document.getElementById('driveStatus');
+  if(!el) return;
+  if(!settings.googleClientId || !settings.googleApiKey){
+    el.textContent = 'Not set up yet — add your Client ID and API Key above';
+  } else if(!settings.driveFolderId){
+    el.textContent = 'Connected — choose a folder to finish setup';
+  } else {
+    el.textContent = `Backing up to: ${settings.driveFolderName || settings.driveFolderId}`;
+  }
+}
+
+function ensureDriveTokenClient(){
+  if(!window.google || !google.accounts || !google.accounts.oauth2){
+    driveToast('Google sign-in is still loading — try again in a moment.');
+    return null;
+  }
+  if(!settings.googleClientId){
+    driveToast('Add a Google Client ID in Settings first.');
+    return null;
+  }
+  if(!driveTokenClient || driveTokenClient._clientId !== settings.googleClientId){
+    driveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: settings.googleClientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: () => {}
+    });
+    driveTokenClient._clientId = settings.googleClientId;
+  }
+  return driveTokenClient;
+}
+
+// Resolves with a valid access token, silently reusing one already in
+// memory if it's not about to expire, otherwise prompting sign-in.
+function getDriveAccessToken(interactive){
+  return new Promise((resolve, reject)=>{
+    if(driveAccessToken && Date.now() < driveTokenExpiry - 30000){
+      resolve(driveAccessToken);
+      return;
+    }
+    const client = ensureDriveTokenClient();
+    if(!client){ reject(new Error('not-configured')); return; }
+    client.callback = (resp)=>{
+      if(resp && resp.error){ reject(new Error(resp.error)); return; }
+      driveAccessToken = resp.access_token;
+      driveTokenExpiry = Date.now() + (Number(resp.expires_in)||3300) * 1000;
+      resolve(driveAccessToken);
+    };
+    client.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+  });
+}
+
+async function connectGoogleDrive(){
+  if(!settings.googleClientId){
+    alert('Add your Google Client ID (and API Key) above first, then Save Settings, then try Connect again.');
+    return;
+  }
+  try{
+    await getDriveAccessToken(true);
+    driveToast('Connected to Google Drive.');
+    updateDriveStatusUi();
+  }catch(e){
+    driveToast('Could not connect to Google Drive — see README for setup steps.');
+  }
+}
+
+function loadDrivePicker(){
+  return new Promise((resolve, reject)=>{
+    if(drivePickerLoaded){ resolve(); return; }
+    if(!window.gapi){ reject(new Error('gapi-not-loaded')); return; }
+    gapi.load('picker', { callback: ()=>{ drivePickerLoaded = true; resolve(); }, onerror: ()=>reject(new Error('picker-load-failed')) });
+  });
+}
+
+async function chooseDriveFolder(){
+  if(!settings.googleApiKey){
+    alert('Add your Google API Key above first, then Save Settings, then try again.');
+    return;
+  }
+  let token;
+  try{
+    token = await getDriveAccessToken(true);
+    await loadDrivePicker();
+  }catch(e){
+    driveToast('Could not open the Drive folder picker — see README for setup steps.');
+    return;
+  }
+  const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+    .setSelectFolderEnabled(true)
+    .setIncludeFolders(true)
+    .setMimeTypes('application/vnd.google-apps.folder');
+  const picker = new google.picker.PickerBuilder()
+    .setOAuthToken(token)
+    .setDeveloperKey(settings.googleApiKey)
+    .addView(view)
+    .setTitle('Choose the folder to back up quotes into')
+    .setCallback((data)=>{
+      if(data.action === google.picker.Action.PICKED){
+        const folder = data.docs[0];
+        settings.driveFolderId = folder.id;
+        settings.driveFolderName = folder.name;
+        persistSettings();
+        updateDriveStatusUi();
+        driveToast(`Quotes will back up to "${folder.name}".`);
+      }
+    })
+    .build();
+  picker.setVisible(true);
+}
+
+// Fire-and-forget: uploads a copy of a generated PDF to the chosen Drive
+// folder. Never blocks or fails the actual download/send it's attached to —
+// a Drive hiccup should never stop a quote reaching the customer.
+async function backupPdfToDrive(doc, filename){
+  if(!settings.driveFolderId) return;
+  try{
+    const token = await getDriveAccessToken(false);
+    const blob = doc.output('blob');
+    const metadata = { name: filename, parents: [settings.driveFolderId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type:'application/json' }));
+    form.append('file', blob);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: form
+    });
+    if(res.ok){ driveToast(`Saved to Drive: ${filename}`); }
+    else{ driveToast('Drive backup failed — saved locally only. Try Connect Google Drive again in Settings.'); }
+  }catch(e){
+    driveToast('Drive backup failed — saved locally only. Try Connect Google Drive again in Settings.');
+  }
 }
 
 // ---------- PDF generation ----------
@@ -1961,7 +2151,9 @@ function quotePdfFilename(){
 function downloadQuotePdf(){
   recalc();
   const doc = buildQuotePdf();
-  doc.save(quotePdfFilename());
+  const filename = quotePdfFilename();
+  doc.save(filename);
+  backupPdfToDrive(doc, filename);
 }
 
 // ---------- Treasure Brief PDF ----------
@@ -2103,7 +2295,9 @@ function treasureBriefPdfFilename(){
 function downloadTreasureBriefPdf(){
   recalc();
   const doc = buildTreasureBriefPdf();
-  doc.save(treasureBriefPdfFilename());
+  const filename = treasureBriefPdfFilename();
+  doc.save(filename);
+  backupPdfToDrive(doc, filename);
 }
 
 function applyEstimateToInternal(){
@@ -2159,6 +2353,7 @@ async function sendTreasureEstimate(){
   const doc = buildTreasureBriefPdf();
   const blob = doc.output('blob');
   const filename = treasureBriefPdfFilename();
+  backupPdfToDrive(doc, filename);
   let file;
   try{ file = new File([blob], filename, {type:'application/pdf'}); }catch(e){ file = null; }
 
@@ -2191,6 +2386,7 @@ async function sendToCustomer(){
   const doc = buildQuotePdf();
   const blob = doc.output('blob');
   const filename = quotePdfFilename();
+  backupPdfToDrive(doc, filename);
   const shareText = `Hi ${quote.customer.name || ''}, please find your quote from ${settings.companyName} attached (Ref ${quote.ref}, total ${fmt(computeTotals(quote).total)}).`;
 
   let file;

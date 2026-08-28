@@ -1968,8 +1968,21 @@ async function connectGoogleDrive(){
 function loadDrivePicker(){
   return new Promise((resolve, reject)=>{
     if(drivePickerLoaded){ resolve(); return; }
-    if(!window.gapi){ reject(new Error('gapi-not-loaded')); return; }
-    gapi.load('picker', { callback: ()=>{ drivePickerLoaded = true; resolve(); }, onerror: ()=>reject(new Error('picker-load-failed')) });
+    // apis.google.com/js/api.js loads async alongside the sign-in script,
+    // and can genuinely still be in flight (especially on mobile data) the
+    // moment someone taps Choose Drive Folder right after connecting — so
+    // wait for window.gapi to show up rather than failing on the first check.
+    let attemptsLeft = 20; // ~6s total
+    const tryLoad = ()=>{
+      if(window.gapi){
+        gapi.load('picker', { callback: ()=>{ drivePickerLoaded = true; resolve(); }, onerror: ()=>reject(new Error('picker-load-failed')) });
+        return;
+      }
+      attemptsLeft--;
+      if(attemptsLeft <= 0){ reject(new Error('gapi-not-loaded')); return; }
+      setTimeout(tryLoad, 300);
+    };
+    tryLoad();
   });
 }
 

@@ -1703,14 +1703,24 @@ async function refreshLoadSelect(){
 
   if(settings.driveFolderId){
     const driveFiles = await fetchDriveQuoteList();
-    driveFiles.forEach(f=>{
-      const ref = f.name.replace(/^Quote-/, '').replace(/\.json$/, '');
-      if(localRefs.has(ref)) return; // already have a local copy — that one's faster to open
+    if(driveFiles === null){
+      // Fetch failed outright (most likely: this device's Drive sign-in has
+      // lapsed) — say so, rather than silently looking like there's simply
+      // nothing backed up.
       const opt = document.createElement('option');
-      opt.value = 'drive:' + f.id;
-      opt.textContent = `${ref} (from Drive)`;
+      opt.disabled = true;
+      opt.textContent = '⚠️ Could not load Drive quotes — reconnect in Settings';
       sel.appendChild(opt);
-    });
+    } else {
+      driveFiles.forEach(f=>{
+        const ref = f.name.replace(/^Quote-/, '').replace(/\.json$/, '');
+        if(localRefs.has(ref)) return; // already have a local copy — that one's faster to open
+        const opt = document.createElement('option');
+        opt.value = 'drive:' + f.id;
+        opt.textContent = `${ref} — ${f.description || 'No name'} (from Drive)`;
+        sel.appendChild(opt);
+      });
+    }
     if(sel.value !== previousValue) sel.value = previousValue;
   }
 }
@@ -2061,7 +2071,13 @@ async function saveQuoteLinkToDrive(token){
   });
   const findData = await findRes.json();
   const existingId = findData.files && findData.files[0] && findData.files[0].id;
-  const metadata = existingId ? { name: filename } : { name: filename, parents: [folderId] };
+  // Stashed in the Drive file's own description so the Load-saved-quote
+  // dropdown can show a real label from one cheap file-list call, instead
+  // of fetching every quote's full JSON just to find out whose it is.
+  const description = `${quote.customer.name || 'No name'} — ${quote.date || ''}`;
+  const metadata = existingId
+    ? { name: filename, description }
+    : { name: filename, parents: [folderId], description };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', new Blob([JSON.stringify(quote)], { type: 'application/json' }));
@@ -2194,20 +2210,25 @@ async function loadQuoteFromDriveByRef(ref){
 
 // Lists the quote snapshots in the Quote Links subfolder, for the
 // Load-saved-quote dropdown to offer quotes saved from other devices.
+// Returns the list of Drive-backed quotes on success (possibly empty, if
+// none exist yet), or null specifically when the attempt itself failed
+// (not signed in this session, network issue, etc.) — refreshLoadSelect()
+// uses that distinction to show a "reconnect" hint instead of just quietly
+// looking like there's nothing there.
 async function fetchDriveQuoteList(){
   if(!settings.driveFolderId) return [];
   try{
     const token = await getDriveAccessToken(false);
     const folderId = await ensureDriveSubfolder(token, 'Quote Links');
     const listQ = `'${folderId}' in parents and trashed=false`;
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(listQ)}&fields=files(id,name)&orderBy=modifiedTime desc&pageSize=200`, {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(listQ)}&fields=files(id,name,description)&orderBy=modifiedTime desc&pageSize=200`, {
       headers: { Authorization: 'Bearer ' + token }
     });
-    if(!res.ok) return [];
+    if(!res.ok) return null;
     const data = await res.json();
     return data.files || [];
   }catch(e){
-    return [];
+    return null;
   }
 }
 

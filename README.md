@@ -215,9 +215,12 @@ Reaching it back from another device works two ways:
   not already on that device.
 - The **Load saved quote** dropdown does the same merge automatically: it
   lists quotes saved on this device, plus — if Drive is connected — any
-  quote synced from another device that isn't already local, labelled
-  "(from Drive)", including ones still mid-draft that were never
-  downloaded or sent anywhere. Picking one fetches and caches it locally.
+  quote synced from another device that isn't already local, labelled with
+  the customer name and date, "(from Drive)", including ones still
+  mid-draft that were never downloaded or sent anywhere. Picking one
+  fetches and caches it locally. If that list can't load at all (most
+  likely this device's Drive sign-in has lapsed), the dropdown says so
+  directly instead of just quietly showing nothing.
 
 None of this works until a device has signed in, though — there's no
 shared login between your phone and your laptop, since there's no backend

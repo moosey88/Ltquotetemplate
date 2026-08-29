@@ -706,6 +706,7 @@ const LS_QUOTES = 'quoteapp_quotes_v1';
 const LS_SETTINGS = 'quoteapp_settings_v1';
 const LS_CURRENT = 'quoteapp_current_v1';
 const LS_JOBBANK = 'quoteapp_jobbank_v1';
+const LS_DRIVE_TOKEN = 'quoteapp_drive_token_v1';
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
@@ -1883,6 +1884,30 @@ let driveTokenExpiry = 0;
 let driveTokenClient = null;
 let drivePickerLoaded = false;
 
+// The access token used to live in memory only, which meant closing the
+// tab (or the OS reclaiming a backgrounded Safari tab, common on iOS)
+// threw away a perfectly good sign-in and forced a fresh Connect. Google
+// tokens are short-lived (well under an hour) regardless of where they're
+// kept, so caching one in localStorage doesn't create any real exposure
+// beyond that same short window — it just means reopening the app within
+// that window reuses it instead of asking you to sign in again.
+function loadCachedDriveToken(){
+  try{
+    const raw = localStorage.getItem(LS_DRIVE_TOKEN);
+    if(!raw) return;
+    const cached = JSON.parse(raw);
+    if(cached.token && cached.expiry && Date.now() < cached.expiry - 30000){
+      driveAccessToken = cached.token;
+      driveTokenExpiry = cached.expiry;
+    }
+  }catch(e){ /* corrupt or missing cache — just sign in fresh */ }
+}
+function persistDriveToken(){
+  try{ localStorage.setItem(LS_DRIVE_TOKEN, JSON.stringify({ token: driveAccessToken, expiry: driveTokenExpiry })); }
+  catch(e){ /* ignore — worst case this device just signs in again next time */ }
+}
+loadCachedDriveToken();
+
 function driveToast(msg){
   let el = document.getElementById('driveToastEl');
   if(!el){
@@ -1955,6 +1980,7 @@ function getDriveAccessToken(interactive){
       if(resp && resp.error){ reject(new Error(resp.error)); return; }
       driveAccessToken = resp.access_token;
       driveTokenExpiry = Date.now() + (Number(resp.expires_in)||3300) * 1000;
+      persistDriveToken();
       resolve(driveAccessToken);
     };
     client.requestAccessToken({ prompt: interactive ? 'consent' : '' });

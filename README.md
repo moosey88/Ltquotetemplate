@@ -257,10 +257,21 @@ already has it, and instead of reading it out, share a link in the form
 `https://moosey88.github.io/Ltquotetemplate/?driveSetup=<your API key>` —
 opening that on the new device fills the key in and opens Settings
 automatically, so all that's left is tapping **Connect Google Drive** and
-**Choose Drive Folder**. The access token itself is never stored — it's
-requested fresh (silently, no popup, if you signed in recently) each time
-something syncs, and kept in memory only, which is also why a sync can
-occasionally need that reconnect: it only lasts the current browser tab.
+**Choose Drive Folder**. The access token from that sign-in is cached in
+localStorage on that device, so closing the tab or the OS backgrounding
+Safari doesn't throw it away — reopening the app reuses it directly with
+no reconnect, right up until it naturally expires (under an hour, however
+Google issued it; that's a Google limit, not a setting here). Once it
+expires, the next sync tries a silent refresh first and only falls back to
+asking you to tap Connect again if that doesn't work.
+
+There's no way to make Google sign-in last longer than that from a plain
+static page — genuinely long-lived access needs a "refresh token," which
+Google only issues through a flow that requires a backend to hold a
+client secret safely (the same trade-off as the AI-research and
+auto-email ideas earlier: doable, but a bigger, separate build). If
+reconnecting even every hour or so becomes a real problem in practice,
+that's the option to revisit.
 
 Access is scoped to Google's `drive.file` permission — the narrowest Drive
 scope there is. It only ever lets this app see files it creates itself, or

@@ -2376,7 +2376,11 @@ function buildQuotePdf(){
   doc.setFont(undefined,'normal');
   quote.items.forEach(it=>{
     const descLines = doc.splitTextToSize(it.desc || '', 90);
-    const detailLines = it.details ? doc.splitTextToSize(it.details, 165) : [];
+    // Wrapped to stay inside the Description column (matching the 90mm the
+    // main desc line wraps at, minus this line's 4mm indent) rather than
+    // the old 165mm, which let it sprawl under the Qty/Price/Total columns
+    // instead of finishing before them.
+    const detailLines = it.details ? doc.splitTextToSize(it.details, 86) : [];
     const rowH = Math.max(descLines.length*4.5, 5);
     pageBreak(rowH + (detailLines.length ? detailLines.length*3.8 + 1.5 : 0) + 2);
     doc.text(descLines, marginX, y);

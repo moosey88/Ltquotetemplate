@@ -1278,7 +1278,13 @@ function blankQuote(){
   return {
     id: 'q_' + Date.now(),
     date: today.toISOString().slice(0,10),
-    ref: 'Q-' + Date.now().toString().slice(-6),
+    // The 6-digit timestamp slice alone repeats every ~16.7 minutes (10^6 ms),
+    // which is a real collision risk across a normal working day — two
+    // unrelated quotes landing on the same reference silently overwrite
+    // each other's Drive backup, since Drive keys that file by ref. The
+    // extra 3-char random suffix makes that effectively impossible while
+    // keeping the reference short enough to read out over the phone.
+    ref: 'Q-' + Date.now().toString().slice(-6) + Math.random().toString(36).slice(2,5).toUpperCase(),
     validUntil: valid.toISOString().slice(0,10),
     preparedBy: settings.preparedBy,
     phone: settings.phone,

@@ -1318,9 +1318,21 @@ function blankQuote(){
 // or one loaded from Drive — with safe defaults, never overwriting what's
 // already there. Shared by every path that can hand `quote` a stored object.
 function normalizeQuote(q){
+  if(!q.internal) q.internal = { feePct: settings.feePct, labour:0, materials:0, materialsList:[], notes:'' };
   if(!q.internal.materialsList) q.internal.materialsList = [];
+  if(typeof q.internal.notes !== 'string') q.internal.notes = '';
   if(!q.discount) q.discount = { type:'percent', value:0, reason:'' };
   if(!q.treasure) q.treasure = { name:'', unit:'hours', value:0, materials:[{item:'',qty:'',cost:0,notes:''}], notes:'' };
+  // A treasure object can exist but still be missing materials on its own —
+  // e.g. data from an older schema, or a partial restore — and both
+  // "Apply Estimate" and "Send Estimate" call .filter() on it directly, so
+  // this has to be checked on its own, not just whether treasure exists.
+  if(!Array.isArray(q.treasure.materials) || !q.treasure.materials.length){
+    q.treasure.materials = [{item:'',qty:'',cost:0,notes:''}];
+  }
+  if(typeof q.treasure.notes !== 'string') q.treasure.notes = '';
+  if(!Array.isArray(q.items) || !q.items.length) q.items = [{desc:'',qty:1,price:0,details:''}];
+  if(!Array.isArray(q.photos)) q.photos = [];
   if(!q.outcome) q.outcome = 'pending';
   return q;
 }
